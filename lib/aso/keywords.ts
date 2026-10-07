@@ -1,4 +1,5 @@
 import { db, parseJson } from "@/lib/server/db";
+import { assertWithinLimit } from "@/lib/server/plans";
 import { HttpError } from "@/lib/server/http";
 import { analyzeKeyword, type KeywordAnalysis, type TopApp } from "./analyze";
 import { getApp } from "./apps";
@@ -10,7 +11,7 @@ type KeywordRow = {
   term: string;
   country: string;
   notes: string | null;
-  liked: number;
+  liked: boolean;
   popularity: number | null;
   difficulty: number | null;
   position: number | null;
@@ -19,7 +20,7 @@ type KeywordRow = {
   top5_mrr: number | null;
   label: string | null;
   results_count: number | null;
-  top_apps: string | null;
+  top_apps: unknown;
   last_refreshed_at: string | null;
   created_at: string;
   prev_position?: number | null;
@@ -76,77 +77,102 @@ function toKeyword(row: KeywordRow): TrackedKeyword {
   };
 }
 
-const SELECT = `SELECT k.*, (SELECT s.position FROM keyword_snapshots s WHERE s.keyword_id = k.id AND s.date < date('now') ORDER BY s.date DESC LIMIT 1) AS prev_position FROM keywords k`;
+const SELECT = `SELECT k.*, (SELECT s.position FROM keyword_snapshots s WHERE s.keyword_id = k.id AND s.date < current_date ORDER BY s.date DESC LIMIT 1) AS prev_position FROM keywords k JOIN apps a ON a.id = k.app_id`;
 
-export function listKeywords(appId: number, country?: string): TrackedKeyword[] {
+export async function listKeywords(workspaceId: string, appId: number, country?: string): Promise<TrackedKeyword[]> {
   const rows = country
-    ? db().prepare(`${SELECT} WHERE k.app_id = ? AND k.country = ? ORDER BY k.created_at DESC`).all(appId, country)
-    : db().prepare(`${SELECT} WHERE k.app_id = ? ORDER BY k.created_at DESC`).all(appId);
-  return (rows as KeywordRow[]).map(toKeyword);
+    ? await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? AND k.country = ? ORDER BY k.created_at DESC`, [workspaceId, appId, country])
+    : await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? ORDER BY k.created_at DESC`, [workspaceId, appId]);
+  return rows.map(toKeyword);
 }
 
-export function getKeyword(id: number): TrackedKeyword {
-  const row = db().prepare(`${SELECT} WHERE k.id = ?`).get(id) as KeywordRow | undefined;
+export async function getKeyword(workspaceId: string, id: number): Promise<TrackedKeyword> {
+  const row = await db.get<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.id = ?`, [workspaceId, id]);
   if (!row) throw new HttpError(404, "Keyword not found");
   return toKeyword(row);
 }
 
-export function addKeywords(appId: number, terms: string[], country: string): TrackedKeyword[] {
-  getApp(appId);
-  const insert = db().prepare("INSERT OR IGNORE INTO keywords (app_id, term, country) VALUES (?, ?, ?)");
+export async function addKeywords(workspaceId: string, appId: number, terms: string[], country: string): Promise<TrackedKeyword[]> {
+  await getApp(workspaceId, appId);
   const clean = [...new Set(terms.map(normalizeTerm).filter(Boolean))];
-  const tx = db().transaction(() => clean.forEach((t) => insert.run(appId, t, country)));
-  tx();
-  const rows = db()
-    .prepare(`${SELECT} WHERE k.app_id = ? AND k.country = ? AND k.term IN (${clean.map(() => "?").join(",") || "''"})`)
-    .all(appId, country, ...clean) as KeywordRow[];
+  if (!clean.length) return [];
+  const existing = new Set(
+    (await db.all<{ term: string }>("SELECT term FROM keywords WHERE app_id = ? AND country = ? AND term = ANY(?::text[])", [appId, country, clean])).map((r) => r.term),
+  );
+  const fresh = clean.filter((t) => !existing.has(t));
+  if (fresh.length) await assertWithinLimit(workspaceId, "keywords", fresh.length);
+  await db.tx(async (t) => {
+    for (const term of fresh) await t.run("INSERT INTO keywords (app_id, term, country) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", [appId, term, country]);
+  });
+  const rows = await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? AND k.country = ? AND k.term = ANY(?::text[])`, [
+    workspaceId,
+    appId,
+    country,
+    clean,
+  ]);
   return rows.map(toKeyword);
 }
 
-export function updateKeyword(id: number, patch: { notes?: string | null; liked?: boolean }) {
-  getKeyword(id);
-  if (patch.notes !== undefined) db().prepare("UPDATE keywords SET notes = ? WHERE id = ?").run(patch.notes, id);
-  if (patch.liked !== undefined) db().prepare("UPDATE keywords SET liked = ? WHERE id = ?").run(patch.liked ? 1 : 0, id);
-  return getKeyword(id);
+export async function updateKeyword(workspaceId: string, id: number, patch: { notes?: string | null; liked?: boolean }) {
+  await getKeyword(workspaceId, id);
+  if (patch.notes !== undefined) await db.run("UPDATE keywords SET notes = ? WHERE id = ?", [patch.notes, id]);
+  if (patch.liked !== undefined) await db.run("UPDATE keywords SET liked = ? WHERE id = ?", [patch.liked, id]);
+  return getKeyword(workspaceId, id);
 }
 
-export function deleteKeywords(ids: number[]) {
-  const del = db().prepare("DELETE FROM keywords WHERE id = ?");
-  db().transaction(() => ids.forEach((id) => del.run(id)))();
+export async function setKeywordsLiked(workspaceId: string, ids: number[], liked: boolean) {
+  await db.run("UPDATE keywords k SET liked = ? FROM apps a WHERE a.id = k.app_id AND a.workspace_id = ? AND k.id = ANY(?::bigint[])", [liked, workspaceId, ids]);
 }
 
-export function saveAnalysis(id: number, a: KeywordAnalysis) {
-  db()
-    .prepare(
-      `UPDATE keywords SET popularity = ?, difficulty = ?, position = ?, downloads_est = ?, top5_downloads = ?, top5_mrr = ?,
-       label = ?, results_count = ?, top_apps = ?, last_refreshed_at = datetime('now') WHERE id = ?`,
-    )
-    .run(a.popularity, a.difficulty, a.position, a.downloadsEst, a.top5Downloads, a.top5Mrr, a.label, a.resultsCount, JSON.stringify(a.topApps), id);
-  db()
-    .prepare(
-      `INSERT INTO keyword_snapshots (keyword_id, date, popularity, difficulty, position) VALUES (?, date('now'), ?, ?, ?)
-       ON CONFLICT(keyword_id, date) DO UPDATE SET popularity = excluded.popularity, difficulty = excluded.difficulty, position = excluded.position`,
-    )
-    .run(id, a.popularity, a.difficulty, a.position);
+export async function deleteKeywords(workspaceId: string, ids: number[]) {
+  await db.run("DELETE FROM keywords k USING apps a WHERE a.id = k.app_id AND a.workspace_id = ? AND k.id = ANY(?::bigint[])", [workspaceId, ids]);
 }
 
-export async function refreshKeyword(id: number): Promise<TrackedKeyword> {
-  const kw = getKeyword(id);
-  const app = getApp(kw.appId);
-  const analysis = await analyzeKeyword(kw.term, kw.country, app.trackId);
-  saveAnalysis(id, analysis);
-  return getKeyword(id);
+export async function saveAnalysis(id: number, a: KeywordAnalysis) {
+  await db.run(
+    `UPDATE keywords SET popularity = ?, difficulty = ?, position = ?, downloads_est = ?, top5_downloads = ?, top5_mrr = ?,
+     label = ?, results_count = ?, top_apps = ?::jsonb, last_refreshed_at = now() WHERE id = ?`,
+    [a.popularity, a.difficulty, a.position, a.downloadsEst, a.top5Downloads, a.top5Mrr, a.label, a.resultsCount, JSON.stringify(a.topApps), id],
+  );
+  await db.run(
+    `INSERT INTO keyword_snapshots (keyword_id, date, popularity, difficulty, position) VALUES (?, current_date, ?, ?, ?)
+     ON CONFLICT (keyword_id, date) DO UPDATE SET popularity = excluded.popularity, difficulty = excluded.difficulty, position = excluded.position`,
+    [id, a.popularity, a.difficulty, a.position],
+  );
 }
 
-export async function refreshKeywords(ids: number[], concurrency = 4) {
+async function refreshRow(id: number) {
+  const row = await db.get<{ term: string; country: string; track_id: number }>(
+    "SELECT k.term, k.country, a.track_id FROM keywords k JOIN apps a ON a.id = k.app_id WHERE k.id = ?",
+    [id],
+  );
+  if (!row) throw new HttpError(404, "Keyword not found");
+  await saveAnalysis(id, await analyzeKeyword(row.term, row.country, row.track_id));
+}
+
+export async function refreshKeyword(workspaceId: string, id: number): Promise<TrackedKeyword> {
+  await getKeyword(workspaceId, id);
+  await refreshRow(id);
+  return getKeyword(workspaceId, id);
+}
+
+export async function refreshKeywords(workspaceId: string | null, ids: number[], concurrency = 4) {
+  const allowed = workspaceId
+    ? new Set(
+        (await db.all<{ id: number }>("SELECT k.id FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ? AND k.id = ANY(?::bigint[])", [workspaceId, ids])).map(
+          (r) => r.id,
+        ),
+      )
+    : new Set(ids);
   const results: { id: number; ok: boolean; error?: string }[] = [];
+  const queue = ids.filter((id) => allowed.has(id));
   let cursor = 0;
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, ids.length) }, async () => {
-      while (cursor < ids.length) {
-        const id = ids[cursor++];
+    Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      while (cursor < queue.length) {
+        const id = queue[cursor++];
         try {
-          await refreshKeyword(id);
+          await refreshRow(id);
           results.push({ id, ok: true });
         } catch (error) {
           results.push({ id, ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -157,18 +183,19 @@ export async function refreshKeywords(ids: number[], concurrency = 4) {
   return results;
 }
 
-export function staleKeywordIds(maxAgeHours = 20) {
+export async function staleKeywordIds(maxAgeHours = 20, limit = 500) {
   return (
-    db()
-      .prepare(
-        `SELECT id FROM keywords WHERE last_refreshed_at IS NULL OR last_refreshed_at < datetime('now', ?) ORDER BY last_refreshed_at ASC NULLS FIRST`,
-      )
-      .all(`-${maxAgeHours} hours`) as { id: number }[]
+    await db.all<{ id: number }>(
+      `SELECT id FROM keywords WHERE last_refreshed_at IS NULL OR last_refreshed_at < now() - make_interval(hours => ?) ORDER BY last_refreshed_at ASC NULLS FIRST LIMIT ?`,
+      [maxAgeHours, limit],
+    )
   ).map((r) => r.id);
 }
 
-export function keywordHistory(id: number) {
-  return db()
-    .prepare("SELECT date, popularity, difficulty, position FROM keyword_snapshots WHERE keyword_id = ? ORDER BY date ASC")
-    .all(id) as { date: string; popularity: number | null; difficulty: number | null; position: number | null }[];
+export async function keywordHistory(workspaceId: string, id: number) {
+  await getKeyword(workspaceId, id);
+  return db.all<{ date: string; popularity: number | null; difficulty: number | null; position: number | null }>(
+    "SELECT date, popularity, difficulty, position FROM keyword_snapshots WHERE keyword_id = ? ORDER BY date ASC",
+    [id],
+  );
 }

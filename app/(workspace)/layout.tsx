@@ -1,8 +1,11 @@
+import { redirect } from "next/navigation";
 import { Toaster } from "sonner";
+import { getSession } from "@/lib/server/context";
 import Sidebar from "@/components/shell/sidebar";
 import AddAppDialog from "@/components/shell/add-app-dialog";
 
-export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
+export default async function WorkspaceLayout({ children }: { children: React.ReactNode }) {
+  if (!(await getSession())) redirect("/login");
   return (
     <main className="flex h-dvh max-w-full overflow-hidden">
       <Sidebar />

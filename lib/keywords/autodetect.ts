@@ -3,7 +3,7 @@ import { getApp, updateApp } from "@/lib/aso/apps";
 import { addKeywords, listKeywords, refreshKeywords } from "@/lib/aso/keywords";
 import { normalizeTerm } from "@/lib/aso/scoring";
 import { discoverRankingKeywords } from "@/lib/explore/ranking-keywords";
-import { cacheGet, cacheSet, DAY } from "@/lib/server/cache";
+import { cacheGet, cacheSet, DAY, wsKey } from "@/lib/server/cache";
 import { findRunningJob, startJob, type JobState } from "@/lib/suggestions/jobs";
 
 export type DetectSource = "asc-keywords" | "asc-metadata" | "ranking";
@@ -43,12 +43,12 @@ function phrases(value: string | null | undefined) {
   return out;
 }
 
-async function ascCandidates(appId: number, country: string): Promise<{ terms: DetectedKeyword[]; used: boolean; subtitle: string | null }> {
-  const app = getApp(appId);
+async function ascCandidates(workspaceId: string, appId: number, country: string): Promise<{ terms: DetectedKeyword[]; used: boolean; subtitle: string | null }> {
+  const app = await getApp(workspaceId, appId);
   if (!app.ascAppId) return { terms: [], used: false, subtitle: null };
   try {
     const { getAppMetadata } = await import("@/lib/asc/metadata");
-    const meta = await getAppMetadata(appId);
+    const meta = await getAppMetadata(workspaceId, appId);
     const locales = getCountry(country).indexedLocales;
     const pick =
       meta.localizations.find((l) => l.locale === locales[0]) ??
@@ -63,28 +63,28 @@ async function ascCandidates(appId: number, country: string): Promise<{ terms: D
   }
 }
 
-export function lastDetection(appId: number, country: string) {
-  return cacheGet<DetectResult>(`keywords:detect:last:${key(appId, country)}`) ?? null;
+export async function lastDetection(workspaceId: string, appId: number, country: string) {
+  return (await cacheGet<DetectResult>(wsKey(workspaceId, `keywords:detect:last:${key(appId, country)}`))) ?? null;
 }
 
-export function runningDetection(appId: number, country: string) {
-  return findRunningJob<DetectResult>(KIND, key(appId, country)) ?? null;
+export function runningDetection(workspaceId: string, appId: number, country: string) {
+  return findRunningJob<DetectResult>(KIND, `${workspaceId}:${key(appId, country)}`) ?? null;
 }
 
-export function startDetection(appId: number, country: string): JobState<DetectResult> {
+export function startDetection(workspaceId: string, appId: number, country: string): JobState<DetectResult> {
   const c = getCountry(country).code;
-  return startJob<DetectResult>(KIND, key(appId, c), async (job) => {
-    const app = getApp(appId);
+  return startJob<DetectResult>(KIND, `${workspaceId}:${key(appId, c)}`, async (job) => {
+    const app = await getApp(workspaceId, appId);
     job.setStage("Reading your App Store metadata", 3);
-    const asc = await ascCandidates(appId, c);
-    if (asc.subtitle && !app.subtitle) updateApp(appId, { subtitle: asc.subtitle.slice(0, 30) });
+    const asc = await ascCandidates(workspaceId, appId, c);
+    if (asc.subtitle && !app.subtitle) await updateApp(workspaceId, appId, { subtitle: asc.subtitle.slice(0, 30) });
     job.tick();
 
     job.setStage("Finding keywords your app already ranks for");
-    const ranking = await discoverRankingKeywords(app.trackId, c).catch(() => []);
+    const ranking = await discoverRankingKeywords(app.trackId, c, asc.subtitle ?? app.subtitle).catch(() => []);
     job.tick();
 
-    const tracked = new Set(listKeywords(appId, c).map((k) => k.term));
+    const tracked = new Set((await listKeywords(workspaceId, appId, c)).map((k) => k.term));
     const rankingByTerm = new Map(ranking.map((r) => [normalizeTerm(r.term), r]));
     const picked = new Map<string, DetectedKeyword>();
     const consider = (k: DetectedKeyword) => {
@@ -104,11 +104,11 @@ export function startDetection(appId: number, country: string): JobState<DetectR
     job.tick();
 
     if (selected.length) {
-      const added = addKeywords(appId, selected.map((s) => s.term), c);
+      const added = await addKeywords(workspaceId, appId, selected.map((s) => s.term), c);
       const ids = added.filter((k) => !k.lastRefreshedAt).map((k) => k.id);
       job.setStage("Scoring detected keywords", job.state.total + ids.length);
       for (let i = 0; i < ids.length; i += 4) {
-        await refreshKeywords(ids.slice(i, i + 4), 4);
+        await refreshKeywords(workspaceId, ids.slice(i, i + 4), 4);
         job.tick(Math.min(4, ids.length - i));
       }
     }
@@ -121,7 +121,7 @@ export function startDetection(appId: number, country: string): JobState<DetectR
       usedAppStoreConnect: asc.used,
       finishedAt: new Date().toISOString(),
     };
-    cacheSet(`keywords:detect:last:${key(appId, c)}`, result, 30 * DAY);
+    await cacheSet(wsKey(workspaceId, `keywords:detect:last:${key(appId, c)}`), result, 30 * DAY);
     return result;
   });
 }

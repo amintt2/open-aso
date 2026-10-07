@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=open_aso
+      - POSTGRES_PASSWORD=open_aso
+      - POSTGRES_DB=open_aso
+    ports:
+      - "5433:5432"
+    volumes:
+      - open-aso-dev-postgres:/var/lib/postgresql/data
+
+volumes:
+  open-aso-dev-postgres:
