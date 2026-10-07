@@ -1,9 +1,14 @@
 import { getApp } from "@/lib/aso/apps";
 import { listKeywords, type TrackedKeyword } from "@/lib/aso/keywords";
+import { getCountry, isCountry } from "@/lib/appstore/countries";
+import { scriptMismatch, searchLanguages } from "@/lib/relevance/language";
+import { scoreKeywordsInCountry } from "@/lib/relevance/tracked";
+import { isRelevant, type Relevance } from "@/lib/relevance/types";
 import { isStopword, tokenize } from "@/lib/suggestions/text";
 import type { Insight, InsightSeverity, MetadataInsights } from "./types";
 
 const LIMIT = 30;
+const MAX_RELEVANCE_FLAGS = 4;
 const ORDER: Record<InsightSeverity, number> = { high: 0, medium: 1, low: 2, positive: 3 };
 
 type Scored = TrackedKeyword & { popularity: number; difficulty: number; opportunity: number };
@@ -62,8 +67,12 @@ export async function metadataInsights(workspaceId: string, appId: number, count
   const metaWords = new Set([...titleWords, ...subtitleWords]);
   const subtitleFree = LIMIT - [...(subtitle ?? "")].length;
 
-  const scored = (await listKeywords(workspaceId, appId, country)).filter((k): k is Scored => k.popularity != null && k.difficulty != null && k.opportunity != null);
-  const insights: Insight[] = [...lengthInsights("Title", title), ...lengthInsights("Subtitle", subtitle ?? "")];
+  const tracked = await listKeywords(workspaceId, appId, country);
+  const relevance = await trackedRelevance(workspaceId, appId, country, tracked);
+  const scored = tracked
+    .filter((k) => isRelevant(relevance.get(k.id)))
+    .filter((k): k is Scored => k.popularity != null && k.difficulty != null && k.opportunity != null);
+  const insights: Insight[] = [...lengthInsights("Title", title), ...lengthInsights("Subtitle", subtitle ?? ""), ...relevanceInsights(tracked, relevance, country)];
 
   const dupes = [...new Set(contentWords(title).filter((w) => subtitleWords.has(stem(w))))];
   for (const word of dupes)
@@ -173,6 +182,76 @@ export async function metadataInsights(workspaceId: string, appId: number, count
     keywordsAnalyzed: scored.length,
     insights: insights.sort((a, b) => ORDER[a.severity] - ORDER[b.severity]),
   };
+}
+
+async function trackedRelevance(workspaceId: string, appId: number, country: string, tracked: TrackedKeyword[]) {
+  if (!tracked.length) return new Map<number, Relevance>();
+  try {
+    const { rows } = await scoreKeywordsInCountry(workspaceId, appId, country, tracked);
+    return new Map(rows.map((r) => [r.id, r.relevance]));
+  } catch {
+    return new Map<number, Relevance>();
+  }
+}
+
+function listOf(items: string[]) {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+function relevanceInsights(tracked: TrackedKeyword[], relevance: Map<number, Relevance>, country: string): Insight[] {
+  const storefront = isCountry(country) ? getCountry(country).name : country.toUpperCase();
+  const languages = listOf(searchLanguages(country));
+  const out: Insight[] = [];
+  const byRelevance = [...tracked].sort((a, b) => (relevance.get(a.id)?.relevance ?? 100) - (relevance.get(b.id)?.relevance ?? 100));
+  for (const k of byRelevance) {
+    const script = scriptMismatch(k.term, country);
+    if (!script) continue;
+    out.push({
+      id: `language-${k.term}`,
+      kind: "language",
+      severity: "medium",
+      keyword: k.term,
+      title: `${quote(k.term)} is ${script} but the ${storefront} storefront is searched in ${languages}`,
+      detail: `Few people search the ${storefront} App Store in ${script}, so this keyword is unlikely to bring installs here. Track it in a storefront where that language is spoken, or remove it.`,
+    });
+  }
+  const off = byRelevance.filter((k) => {
+    const r = relevance.get(k.id);
+    return r && !scriptMismatch(k.term, country) && (r.category === "unrelated" || r.category === "brand");
+  });
+  for (const k of off) {
+    const r = relevance.get(k.id)!;
+    const judge = r.source === "jev" ? "Jev" : "a keyword-overlap heuristic";
+    out.push(
+      r.category === "brand"
+        ? {
+            id: `relevance-${k.term}`,
+            kind: "relevance",
+            severity: "low",
+            keyword: k.term,
+            title: `${quote(k.term)} looks like another app's brand`,
+            detail: `People searching a specific brand usually want that app. Apple also rejects metadata that uses other brands, so keep it out of your title, subtitle and keyword field.`,
+          }
+        : {
+            id: `relevance-${k.term}`,
+            kind: "relevance",
+            severity: "medium",
+            keyword: k.term,
+            title: `${quote(k.term)} looks unrelated to your app`,
+            detail: `Relevance ${Math.round(r.relevance)}/100, judged by ${judge}. Searchers for it want something else, so even a good rank rarely converts. It is left out of title and subtitle recommendations.`,
+          },
+    );
+  }
+  const flags = out.slice(0, MAX_RELEVANCE_FLAGS);
+  if (out.length > MAX_RELEVANCE_FLAGS)
+    flags.push({
+      id: "relevance-more",
+      kind: "relevance",
+      severity: "low",
+      title: `${out.length - MAX_RELEVANCE_FLAGS} more tracked keywords look unrelated or in the wrong language`,
+      detail: `Open Keywords and sort by Relevance to review them for ${storefront}.`,
+    });
+  return flags;
 }
 
 function quantile(values: number[], q: number) {

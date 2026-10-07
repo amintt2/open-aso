@@ -6,6 +6,7 @@ import Button from "@/components/_ui/button";
 import { Checkbox } from "@/components/_ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/_ui/dropdown-menu";
 import { TableCell, TableRow } from "@/components/_ui/table";
+import { RelevanceCell } from "@/components/shell/relevance";
 import { LabelTag, PositionBadge, ScoreBar } from "@/components/shell/score";
 import { COUNTRY_BY_CODE } from "@/lib/appstore/countries";
 import { formatCompact, timeAgo } from "@/lib/client/format";
@@ -140,6 +141,14 @@ function GroupRowBase({ group: g, expanded, selectedCount, refreshingCount, hand
         </span>
       </TableCell>
       <TableCell>
+        <RelevanceCell
+          relevance={g.bestRelevance?.relevance}
+          category={g.bestRelevance?.relevanceCategory}
+          source={g.bestRelevance?.relevanceSource}
+          languageMatch={g.bestRelevance?.languageMatch}
+        />
+      </TableCell>
+      <TableCell>
         {g.pending ? (
           <span className="text-subtle">—</span>
         ) : best ? (
@@ -267,6 +276,9 @@ function SubRowBase({ keyword: k, selected, refreshing, handlers }: SubRowProps)
           </div>
         </TableCell>
         <TableCell className="caption-style text-subtle">{k.country.toUpperCase()}</TableCell>
+        <TableCell>
+          <RelevanceCell relevance={k.relevance} category={k.relevanceCategory} source={k.relevanceSource} languageMatch={k.languageMatch} />
+        </TableCell>
         <TableCell>{pending ? <span className="text-subtle">—</span> : <PositionBadge position={k.position} change={k.positionChange} />}</TableCell>
         <TableCell>
           <span className="inline-flex items-center gap-1.5">

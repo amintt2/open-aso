@@ -9,8 +9,10 @@ import {
   Plus,
   RefreshCw,
   SearchX,
+  Sparkles,
   Wand2,
 } from "lucide-react";
+import { toast } from "sonner";
 import Button from "@/components/_ui/button";
 import CountBadge from "@/components/_ui/count-badge";
 import CountrySelect from "@/components/shell/country-select";
@@ -18,9 +20,10 @@ import EmptyState from "@/components/shell/empty-state";
 import PageHeader from "@/components/shell/page-header";
 import { ALL_COUNTRIES, useAppCountry, useCurrentApp } from "@/hooks/use-app";
 import { COUNTRY_BY_CODE } from "@/lib/appstore/countries";
-import { revalidate, useApi } from "@/lib/client/api";
+import { api, revalidate, useApi } from "@/lib/client/api";
 import type { TrackedKeyword } from "@/lib/client/types";
 import type { PositionSeries } from "@/lib/keywords/history";
+import type { TrackedRelevanceResult } from "@/lib/relevance/tracked";
 import {
   DEFAULT_FILTERS,
   defaultDir,
@@ -105,6 +108,7 @@ export default function KeywordsView() {
   const [panel, setPanel] = useState<Panel>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<number[]>([]);
+  const [scoringRelevance, setScoringRelevance] = useState(false);
   const lastClicked = useRef<number | null>(null);
   const lastGroup = useRef<string | null>(null);
   const autoQueued = useRef(new Set<number>());
@@ -278,6 +282,28 @@ export default function KeywordsView() {
     enqueue(stale.length ? stale : all.map((k) => k.id));
   }
 
+  async function scoreRelevance() {
+    if (!app) return;
+    setScoringRelevance(true);
+    try {
+      const res = await api<TrackedRelevanceResult>(
+        `/api/apps/${app.id}/keywords/relevance`,
+        { method: "POST", body: { country } },
+      );
+      await mutate();
+      const how = res.judged ? "judged by Jev" : "estimated from your listing";
+      toast.success(
+        `Scored relevance for ${res.scored} ${res.scored === 1 ? "keyword" : "keywords"}, ${how}`,
+      );
+      if (res.jevError)
+        toast.warning(`Jev was unavailable for some keywords: ${res.jevError}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not score relevance");
+    } finally {
+      setScoringRelevance(false);
+    }
+  }
+
   function exportName(suffix = "") {
     return `${slugify(app?.name ?? "app")}-keywords-${country}${suffix}-${new Date().toISOString().slice(0, 10)}`;
   }
@@ -314,6 +340,7 @@ export default function KeywordsView() {
     ? new Set([app.primaryCountry, ...app.countries]).size
     : 1;
   const shownCount = allMode ? visibleGroups.length : visible.length;
+  const unscored = all.filter((k) => !k.relevanceAt).length;
 
   if (appError)
     return (
@@ -377,6 +404,28 @@ export default function KeywordsView() {
               disabled={!visibleRows.length}
             >
               <Download aria-hidden className="size-3.5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size={unscored > 0 ? "sm" : "icon"}
+              className={unscored > 0 ? "h-[30px]" : undefined}
+              onClick={() => void scoreRelevance()}
+              disabled={scoringRelevance || !all.length}
+              aria-label={unscored > 0 ? "Score relevance" : "Re-score relevance"}
+              title={
+                unscored > 0
+                  ? `Judge how well ${unscored} unscored ${unscored === 1 ? "keyword fits" : "keywords fit"} your app`
+                  : "Re-score how well these keywords fit your app"
+              }
+            >
+              {scoringRelevance ? (
+                <Loader2 aria-hidden className="size-3.5 animate-spin" />
+              ) : (
+                <Sparkles aria-hidden className="size-3.5" />
+              )}
+              {unscored > 0 && (
+                <span className="hidden md:inline">Score relevance</span>
+              )}
             </Button>
             <DetectMenu
               country={allMode ? homeCountry : country}

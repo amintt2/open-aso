@@ -1,6 +1,6 @@
 export type InsightSeverity = "high" | "medium" | "low" | "positive";
 
-export type InsightKind = "length" | "duplicate" | "title-gap" | "subtitle-fit" | "alternative" | "not-ranking" | "working";
+export type InsightKind = "length" | "duplicate" | "title-gap" | "subtitle-fit" | "alternative" | "not-ranking" | "working" | "relevance" | "language";
 
 export type Insight = {
   id: string;

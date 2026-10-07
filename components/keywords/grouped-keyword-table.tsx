@@ -12,6 +12,7 @@ type Column = { key: GroupSortKey; label: string; title?: string; align?: "right
 
 const COLUMNS: Column[] = [
   { key: "countries", label: "Countries", title: "Storefronts where this keyword is tracked" },
+  { key: "relevance", label: "Relevance", title: "Best relevance to your app across countries, judged by Jev or estimated from your listing" },
   { key: "position", label: "Best position", title: "Your best rank across countries (top 200)" },
   { key: "popularity", label: "Popularity", title: "Highest popularity across countries, 5–100" },
   { key: "difficulty", label: "Difficulty", title: "Average difficulty across countries, 1–100" },
@@ -59,7 +60,7 @@ export default function GroupedKeywordTable({ groups, expanded, sort, onSort, se
   const term: Column = { key: "term", label: "Keyword" };
 
   return (
-    <Table className="min-w-[1040px] text-[13px]">
+    <Table className="min-w-[1200px] text-[13px]">
       <TableHeader>
         <TableRow className="border-0">
           <TableHead className={cn(HEAD, "left-0 z-30 w-10 pr-0 pl-4")}>

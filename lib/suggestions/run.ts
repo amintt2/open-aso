@@ -4,13 +4,18 @@ import { listKeywords } from "@/lib/aso/keywords";
 import { cached, cacheGet, cacheSet, DAY, HOUR, wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
 import { HttpError } from "@/lib/server/http";
+import { isTypesafeConfigured } from "@/lib/ai/typesafe";
+import { isRelevant, type Relevance } from "@/lib/relevance/types";
+import { relevanceContext, scoreRelevance } from "@/lib/relevance/score";
 import { aiAvailable } from "./ai";
-import { generateCandidates } from "./generate";
+import { generateCandidates, type Candidate } from "./generate";
 import { findRunningJob, mapLimit, publicJob, startJob, type JobState } from "./jobs";
-import type { Suggestion, SuggestionsOverview, SuggestionsResult } from "./types";
+import { combinedScore, type FilteredSuggestion, type Suggestion, type SuggestionsOverview, type SuggestionsResult } from "./types";
 
 export const MIN_TRACKED = 3;
 const MAX_SCORED = 40;
+const MAX_FILTERED = 300;
+const RELEVANCE_BUCKET = 5;
 const JOB_KIND = "suggestions";
 
 function lastKey(workspaceId: string, appId: number, country: string) {
@@ -33,7 +38,7 @@ export function analyzeCached(term: string, country: string, trackId: number): P
   return cached(`suggestions:analysis:${country}:${trackId}:${term}`, 12 * HOUR, () => analyzeKeyword(term, country, trackId));
 }
 
-function toSuggestion(a: KeywordAnalysis, sources: Suggestion["sources"]): Suggestion {
+function toSuggestion(a: KeywordAnalysis, sources: Suggestion["sources"], r?: Relevance): Suggestion {
   return {
     term: a.term,
     sources,
@@ -45,7 +50,17 @@ function toSuggestion(a: KeywordAnalysis, sources: Suggestion["sources"]): Sugge
     downloadsEst: a.downloadsEst,
     monthlySearches: a.monthlySearches,
     resultsCount: a.resultsCount,
+    ...(r ? { relevance: r.relevance, category: r.category, relevanceSource: r.source, score: combinedScore(r.relevance, a.opportunity) } : {}),
   };
+}
+
+function byRelevance(scores: Map<string, Relevance>) {
+  const bucket = (c: Candidate) => Math.floor((scores.get(c.term)?.relevance ?? 0) / RELEVANCE_BUCKET);
+  return (a: Candidate, b: Candidate) => bucket(b) - bucket(a) || b.weight - a.weight;
+}
+
+function toFiltered(c: Candidate, r: Relevance): FilteredSuggestion {
+  return { term: c.term, sources: c.sources, relevance: r.relevance, category: r.category, languageMatch: r.languageMatch, relevanceSource: r.source };
 }
 
 export async function suggestionsOverview(workspaceId: string, appId: number, country: string): Promise<SuggestionsOverview> {
@@ -71,7 +86,7 @@ export async function startSuggestions(workspaceId: string, appId: number, count
   const withAi = useAi && (await aiAvailable(workspaceId));
 
   return startJob<SuggestionsResult>(JOB_KIND, jobKey(workspaceId, appId, country), async (job) => {
-    job.setStage("Collecting ideas", 0);
+    job.setStage("Generating candidates", 0);
     const { candidates, aiError, usedAi } = await generateCandidates({
       workspaceId,
       app,
@@ -82,20 +97,41 @@ export async function startSuggestions(workspaceId: string, appId: number, count
       onPlan: (n) => job.addTotal(n),
       onStep: () => job.tick(),
     });
-    const picked = candidates.slice(0, MAX_SCORED);
-    job.setStage("Scoring keywords");
+
+    job.setStage(isTypesafeConfigured() ? "Judging relevance with Jev" : "Judging relevance");
+    job.addTotal(candidates.length);
+    let ticked = 0;
+    const context = await relevanceContext(workspaceId, appId, country);
+    const relevance = await scoreRelevance(workspaceId, appId, candidates.map((c) => c.term), country, {
+      context,
+      onProgress: (done) => {
+        job.tick(done - ticked);
+        ticked = done;
+      },
+    });
+    const scores = relevance.scores;
+    const kept = candidates.filter((c) => isRelevant(scores.get(c.term)));
+    const filtered = candidates
+      .filter((c) => !isRelevant(scores.get(c.term)))
+      .map((c) => toFiltered(c, scores.get(c.term)!))
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, MAX_FILTERED);
+
+    const picked = [...kept].sort(byRelevance(scores)).slice(0, MAX_SCORED);
+    job.setStage("Scoring top keywords");
     job.addTotal(picked.length);
     const scored: Suggestion[] = [];
     await mapLimit(picked, 3, async (c) => {
       try {
         const analysis = await analyzeCached(c.term, country, app.trackId);
-        if (analysis.resultsCount > 0) scored.push(toSuggestion(analysis, c.sources));
+        if (analysis.resultsCount > 0) scored.push(toSuggestion(analysis, c.sources, scores.get(c.term)));
         job.setPartial(scored.length);
       } catch {
         job.setPartial(scored.length);
       }
       job.tick();
     });
+    const sources = new Set(candidates.map((c) => scores.get(c.term)?.source));
     const result: SuggestionsResult = {
       appId,
       country,
@@ -103,7 +139,12 @@ export async function startSuggestions(workspaceId: string, appId: number, count
       usedAi,
       aiError,
       candidatesConsidered: candidates.length,
-      suggestions: scored.sort((a, b) => b.opportunity - a.opportunity),
+      judged: candidates.length,
+      kept: kept.length,
+      relevanceSource: sources.size > 1 ? "mixed" : sources.has("jev") ? "jev" : "heuristic",
+      relevanceError: relevance.jevError,
+      filtered,
+      suggestions: scored.sort((a, b) => (b.score ?? b.opportunity) - (a.score ?? a.opportunity) || b.opportunity - a.opportunity),
     };
     await cacheSet(lastKey(workspaceId, appId, country), result, 30 * DAY);
     return result;

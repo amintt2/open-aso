@@ -38,6 +38,32 @@ export async function cacheSet(key: string, value: unknown, ttlMs: number) {
   );
 }
 
+export async function cacheGetMany<T>(keys: string[]): Promise<Map<string, T>> {
+  const out = new Map<string, T>();
+  const scoped = keys.filter(isScoped);
+  if (scoped.length) {
+    const rows = await db.all<{ key: string; value: T; expires_at: number }>("SELECT key, value, expires_at FROM cache WHERE key = ANY(?::text[])", [scoped]);
+    const now = Date.now();
+    for (const row of rows) if (row.expires_at >= now) out.set(row.key, row.value);
+  }
+  for (const key of keys.filter((k) => !isScoped(k))) {
+    const hit = await cacheGet<T>(key);
+    if (hit !== undefined) out.set(key, hit);
+  }
+  return out;
+}
+
+export async function cacheSetMany(entries: [string, unknown][], ttlMs: number) {
+  const scoped = [...new Map(entries.filter(([key]) => isScoped(key)))];
+  if (scoped.length)
+    await db.run(
+      `INSERT INTO cache (key, value, expires_at) SELECT k, v::jsonb, ? FROM unnest(?::text[], ?::text[]) AS t(k, v)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at`,
+      [Date.now() + ttlMs, scoped.map(([key]) => key), scoped.map(([, value]) => JSON.stringify(value ?? null))],
+    );
+  for (const [key, value] of entries.filter(([k]) => !isScoped(k))) await cacheSet(key, value, ttlMs);
+}
+
 export async function cacheDelete(prefix: string) {
   await db.run("DELETE FROM cache WHERE key LIKE ? || '%'", [prefix]);
 }

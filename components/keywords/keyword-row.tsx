@@ -11,6 +11,7 @@ import {
 } from "@/components/_ui/dropdown-menu";
 import { TableCell, TableRow } from "@/components/_ui/table";
 import Sparkline from "@/components/_common/sparkline";
+import { RelevanceCell } from "@/components/shell/relevance";
 import { LabelTag, PositionBadge, ScoreBar } from "@/components/shell/score";
 import { formatCompact, formatUsd, timeAgo } from "@/lib/client/format";
 import type { TrackedKeyword } from "@/lib/client/types";
@@ -166,6 +167,14 @@ function KeywordRow({
               />
             )}
           </div>
+        </TableCell>
+        <TableCell>
+          <RelevanceCell
+            relevance={k.relevance}
+            category={k.relevanceCategory}
+            source={k.relevanceSource}
+            languageMatch={k.languageMatch}
+          />
         </TableCell>
         <TableCell>
           <span className="inline-flex items-center gap-1.5">

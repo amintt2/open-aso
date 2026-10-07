@@ -4,6 +4,8 @@ import { HttpError } from "@/lib/server/http";
 import { analyzeKeyword, type KeywordAnalysis, type TopApp } from "./analyze";
 import { getApp } from "./apps";
 import { normalizeTerm, opportunityScore, type TargetingLabel } from "./scoring";
+import { languageMatches } from "@/lib/relevance/language";
+import type { RelevanceCategory, RelevanceSource } from "@/lib/relevance/types";
 
 type KeywordRow = {
   id: number;
@@ -25,6 +27,10 @@ type KeywordRow = {
   last_refreshed_at: string | null;
   created_at: string;
   prev_position?: number | null;
+  relevance?: number | null;
+  relevance_category?: string | null;
+  relevance_source?: string | null;
+  relevance_at?: string | null;
 };
 
 export type TrackedKeyword = {
@@ -48,6 +54,11 @@ export type TrackedKeyword = {
   topApps: TopApp[];
   lastRefreshedAt: string | null;
   createdAt: string;
+  relevance: number | null;
+  relevanceCategory: RelevanceCategory | null;
+  relevanceSource: RelevanceSource | null;
+  relevanceAt: string | null;
+  languageMatch: boolean;
 };
 
 function toKeyword(row: KeywordRow): TrackedKeyword {
@@ -77,6 +88,11 @@ function toKeyword(row: KeywordRow): TrackedKeyword {
     topApps: parseJson<TopApp[]>(row.top_apps, []),
     lastRefreshedAt: row.last_refreshed_at,
     createdAt: row.created_at,
+    relevance: row.relevance ?? null,
+    relevanceCategory: (row.relevance_category as RelevanceCategory | null) ?? null,
+    relevanceSource: (row.relevance_source as RelevanceSource | null) ?? null,
+    relevanceAt: row.relevance_at ?? null,
+    languageMatch: languageMatches(row.term, row.country),
   };
 }
 

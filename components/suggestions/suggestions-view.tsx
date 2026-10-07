@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { KeyRound, Lightbulb, Loader2, Plus, Sparkles, Wand2 } from "lucide-react";
+import { EyeOff, Eye, KeyRound, Lightbulb, Loader2, Plus, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/_ui/button";
 import { Checkbox } from "@/components/_ui/checkbox";
@@ -9,6 +9,7 @@ import CountBadge from "@/components/_ui/count-badge";
 import CountrySelect from "@/components/shell/country-select";
 import EmptyState from "@/components/shell/empty-state";
 import PageHeader from "@/components/shell/page-header";
+import { RelevanceSourceBadge } from "@/components/shell/relevance";
 import { useAppCountry, useCurrentApp } from "@/hooks/use-app";
 import { api, revalidate, useApi } from "@/lib/client/api";
 import { timeAgo } from "@/lib/client/format";
@@ -35,6 +36,7 @@ export default function SuggestionsView() {
   const [labelFilter, setLabelFilter] = useState<TargetingLabel | "all">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
+  const [showFiltered, setShowFiltered] = useState(false);
 
   const scope = `${appId}:${country}`;
   const jobId = (startedJob?.scope === scope ? startedJob.id : null) ?? overview?.running?.id ?? null;
@@ -43,6 +45,7 @@ export default function SuggestionsView() {
     mutateOverview();
     if (finished.status === "error") toast.error(finished.error ?? "Could not generate suggestions");
     else if (finished.result?.aiError) toast.warning(`AI ideas skipped: ${finished.result.aiError}`);
+    if (finished.result?.relevanceError) toast.warning(`Jev relevance partly unavailable, used the heuristic instead: ${finished.result.relevanceError}`);
   });
   const running = !!jobId && (!job || job.status === "running");
   const result = job?.status === "done" && job.result ? job.result : overview?.last ?? null;
@@ -55,6 +58,7 @@ export default function SuggestionsView() {
     return [...counts].sort((a, b) => b[1] - a[1]);
   }, [rows]);
   const visible = labelFilter === "all" ? rows : rows.filter((r) => r.label === labelFilter);
+  const filtered = useMemo(() => (result?.filtered ?? []).filter((f) => !trackedTerms.has(f.term)), [result, trackedTerms]);
   const selectedVisible = [...selected].filter((t) => rows.some((r) => r.term === t));
   const trackedCount = tracked?.length ?? overview?.trackedCount ?? 0;
   const unlocked = trackedCount >= MIN_TRACKED;
@@ -147,7 +151,13 @@ export default function SuggestionsView() {
                   stage={job?.stage ?? "Starting"}
                   done={job?.done ?? 0}
                   total={job?.total ?? 0}
-                  detail={typeof job?.partial === "number" ? `${job.partial} keywords scored so far. Lookups are cached, so the next run is faster.` : "Gathering search hints, top app titles and competitor names."}
+                  detail={
+                    job?.stage.startsWith("Judging")
+                      ? "Checking every candidate against your listing so only keywords that fit your app get scored."
+                      : typeof job?.partial === "number"
+                        ? `${job.partial} keywords scored so far. Lookups are cached, so the next run is faster.`
+                        : "Gathering search hints, top app titles and competitor names."
+                  }
                 />
               )}
 
@@ -158,10 +168,18 @@ export default function SuggestionsView() {
                       <h2 id="suggestions-heading">Keyword ideas</h2>
                       <CountBadge>{rows.length}</CountBadge>
                     </div>
-                    <Button variant="primary" size="md" disabled={!selectedVisible.length || adding} onClick={addSelected}>
-                      {adding ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Plus aria-hidden className="size-3.5" />}
-                      {selectedVisible.length ? `Add ${selectedVisible.length} to tracked` : "Add to tracked"}
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {filtered.length > 0 && (
+                        <Button variant="ghost" size="md" aria-pressed={showFiltered} onClick={() => setShowFiltered((v) => !v)}>
+                          {showFiltered ? <EyeOff aria-hidden className="size-3.5" /> : <Eye aria-hidden className="size-3.5" />}
+                          {showFiltered ? "Hide filtered out" : `Show filtered out (${filtered.length})`}
+                        </Button>
+                      )}
+                      <Button variant="primary" size="md" disabled={!selectedVisible.length || adding} onClick={addSelected}>
+                        {adding ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Plus aria-hidden className="size-3.5" />}
+                        {selectedVisible.length ? `Add ${selectedVisible.length} to tracked` : "Add to tracked"}
+                      </Button>
+                    </div>
                   </div>
                   <div role="group" aria-label="Filter by label" className="border-border flex flex-wrap gap-1.5 border-b px-4 py-2.5">
                     {[["all", rows.length] as const, ...labelCounts].map(([label, count]) => (
@@ -178,10 +196,17 @@ export default function SuggestionsView() {
                       </Button>
                     ))}
                   </div>
-                  <SuggestionsTable rows={visible} selected={selected} onSelectedChange={setSelected} />
-                  <p className="caption-style text-subtle px-4 py-3">
-                    Generated {timeAgo(result.generatedAt)} from {result.candidatesConsidered} candidates{result.usedAi ? ", including AI ideas" : ""}. Popularity, difficulty and downloads are modeled estimates.
-                  </p>
+                  <SuggestionsTable rows={visible} filtered={showFiltered ? filtered : []} selected={selected} onSelectedChange={setSelected} />
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-3">
+                    {result.relevanceSource && <RelevanceSourceBadge source={result.relevanceSource} />}
+                    <p className="caption-style text-subtle">
+                      Generated {timeAgo(result.generatedAt)}.{" "}
+                      {result.judged != null
+                        ? `Judged ${result.judged} candidates for relevance${result.usedAi ? " (including AI ideas)" : ""}, kept ${result.kept ?? 0} and scored the top ${result.suggestions.length}.`
+                        : `From ${result.candidatesConsidered} candidates${result.usedAi ? ", including AI ideas" : ""}.`}{" "}
+                      Score = relevance × opportunity. Popularity, difficulty and downloads are modeled estimates.
+                    </p>
+                  </div>
                 </section>
               ) : (
                 !running && (

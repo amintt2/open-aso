@@ -61,6 +61,10 @@ export function compactKeyword(k: TrackedKeyword) {
     notes: k.notes,
     topApps: k.topApps.slice(0, 3).map((a) => ({ position: a.position, trackId: a.trackId, name: a.name })),
     lastRefreshedAt: k.lastRefreshedAt,
+    relevance: k.relevance,
+    relevanceCategory: k.relevanceCategory,
+    relevanceSource: k.relevanceSource,
+    languageMatch: k.languageMatch,
   };
 }
 

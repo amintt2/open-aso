@@ -7,6 +7,7 @@ import { compareKeywords, getCompetitor, listCompetitors } from "@/lib/competito
 import { discoverRankingKeywords } from "@/lib/explore/ranking-keywords";
 import { exploreApp, exploreSearch } from "@/lib/explore/store";
 import { metadataInsights } from "@/lib/insights/metadata";
+import { scoreTrackedKeywords } from "@/lib/relevance/tracked";
 import { lastScan, startScan } from "@/lib/opportunities/scan";
 import { loadReviews } from "@/lib/reviews/reviews";
 import { reviewThemes } from "@/lib/reviews/themes";
@@ -90,7 +91,7 @@ export const asoTools = [
     title: "Get tracked keywords",
     layer: "aso",
     description:
-      "Tracked keywords for an app with popularity (0-100), difficulty (0-100), opportunity score, current rank (null = not in top 200), rank change since the previous snapshot, targeting label and estimated monthly downloads.",
+      "Tracked keywords for an app with popularity (0-100), difficulty (0-100), opportunity score, current rank (null = not in top 200), rank change since the previous snapshot, targeting label, estimated monthly downloads and relevance to the app (0-100, category core/related/unrelated/brand, null until scored; languageMatch=false when the term's script doesn't fit the storefront).",
     input: {
       appId,
       country: optionalCountry.describe("Storefront code to filter by. Omit for all countries."),
@@ -99,7 +100,11 @@ export const asoTools = [
     },
     run: async ({ appId: id, country: c, sort, limit: n }, { workspaceId }) => {
       await getApp(workspaceId, id);
-      const all = await listKeywords(workspaceId, id, c);
+      let all = await listKeywords(workspaceId, id, c);
+      if (all.some((k) => !k.relevanceAt)) {
+        await scoreTrackedKeywords(workspaceId, id, c ?? "all").catch(() => undefined);
+        all = await listKeywords(workspaceId, id, c);
+      }
       return { appId: id, country: c ?? "all", total: all.length, note: ESTIMATE_NOTE, keywords: sortKeywords(all, sort).slice(0, n).map(compactKeyword) };
     },
   }),
@@ -212,7 +217,7 @@ export const asoTools = [
     title: "Keyword suggestions",
     layer: "aso",
     description:
-      "New keyword ideas for an app scored by popularity, difficulty and opportunity. Returns the last generated set when available; otherwise (or with refresh: true) starts generation and waits up to ~55s. If still running, call again later. Requires at least 3 tracked keywords in the country.",
+      "New keyword ideas for an app, judged for relevance to the app (Jev, or a heuristic fallback; unrelated/brand/wrong-language ideas are dropped) and scored by popularity, difficulty and opportunity; sorted by score = relevance x opportunity. Returns the last generated set when available; otherwise (or with refresh: true) starts generation and waits up to ~55s. If still running, call again later. Requires at least 3 tracked keywords in the country.",
     input: {
       appId,
       country: optionalCountry,
@@ -229,7 +234,7 @@ export const asoTools = [
         if (!outcome.done) return { status: "running", message: "Still generating suggestions. Call get_keyword_suggestions again in a minute (refresh: false).", job: outcome.job };
         result = outcome.result;
       }
-      return { status: "done", note: ESTIMATE_NOTE, ...result, suggestions: result.suggestions.slice(0, n) };
+      return { status: "done", note: ESTIMATE_NOTE, ...result, suggestions: result.suggestions.slice(0, n), filtered: (result.filtered ?? []).slice(0, 20) };
     },
   }),
   defineTool({

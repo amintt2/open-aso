@@ -24,6 +24,11 @@ type Column = {
 
 const COLUMNS: Column[] = [
   {
+    key: "relevance",
+    label: "Relevance",
+    title: "How well the keyword fits your app, judged by Jev or estimated from your listing",
+  },
+  {
     key: "popularity",
     label: "Popularity",
     title: "Modeled search popularity, 5–100",
@@ -148,7 +153,7 @@ export default function KeywordTable({
   const TermArrow = sort.dir === "asc" ? ArrowUp : ArrowDown;
 
   return (
-    <Table className="min-w-[1180px] text-[13px]">
+    <Table className="min-w-[1320px] text-[13px]">
       <TableHeader>
         <TableRow className="border-0">
           <TableHead className={cn(HEAD, "left-0 z-30 w-10 pr-0 pl-4")}>
@@ -221,7 +226,7 @@ export function KeywordTableSkeleton() {
                 style={{ width: `${45 + ((i * 37) % 45)}%` }}
               />
             </TableCell>
-            {Array.from({ length: 9 }, (_, j) => (
+            {Array.from({ length: 10 }, (_, j) => (
               <TableCell key={j}>
                 <span
                   className="bg-muted/70 block h-3 w-14 animate-pulse rounded-full"

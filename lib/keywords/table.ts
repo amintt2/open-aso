@@ -16,6 +16,7 @@ export const MAX_TERM_LENGTH = 100;
 
 export type SortKey =
   | "term"
+  | "relevance"
   | "popularity"
   | "difficulty"
   | "label"
@@ -34,6 +35,7 @@ export type Filters = {
   rankedOnly: boolean;
   popularity: [number, number];
   difficulty: [number, number];
+  hideUnrelated?: boolean;
 };
 
 export const DEFAULT_FILTERS: Filters = {
@@ -42,13 +44,23 @@ export const DEFAULT_FILTERS: Filters = {
   rankedOnly: false,
   popularity: [0, 100],
   difficulty: [0, 100],
+  hideUnrelated: false,
 };
+
+export function isUnrelated(k: TrackedKeyword) {
+  return (
+    !k.languageMatch ||
+    k.relevanceCategory === "unrelated" ||
+    k.relevanceCategory === "brand"
+  );
+}
 
 export function activeFilterCount(f: Filters) {
   return (
     (f.labels.length ? 1 : 0) +
     (f.likedOnly ? 1 : 0) +
     (f.rankedOnly ? 1 : 0) +
+    (f.hideUnrelated ? 1 : 0) +
     (f.popularity[0] > 0 || f.popularity[1] < 100 ? 1 : 0) +
     (f.difficulty[0] > 0 || f.difficulty[1] < 100 ? 1 : 0)
   );
@@ -71,6 +83,7 @@ export function filterKeywords(
       (!f.labels.length || (k.label != null && f.labels.includes(k.label))) &&
       (!f.likedOnly || k.liked) &&
       (!f.rankedOnly || k.position != null) &&
+      (!f.hideUnrelated || !isUnrelated(k)) &&
       inRange(k.popularity, f.popularity) &&
       inRange(k.difficulty, f.difficulty),
   );
@@ -214,6 +227,8 @@ export type KeywordGroup = {
   countries: string[];
   bestPosition: TrackedKeyword | null;
   bestPopularity: TrackedKeyword | null;
+  bestRelevance: TrackedKeyword | null;
+  relevance: number | null;
   popularity: number | null;
   difficulty: number | null;
   label: TargetingLabel | null;
@@ -227,6 +242,7 @@ export type KeywordGroup = {
 export type GroupSortKey =
   | "term"
   | "countries"
+  | "relevance"
   | "position"
   | "popularity"
   | "difficulty"
@@ -265,6 +281,10 @@ function toGroup(term: string, rows: TrackedKeyword[]): KeywordGroup {
   const bestPopularity = scored.length
     ? scored.reduce((a, b) => ((b.popularity ?? 0) > (a.popularity ?? 0) ? b : a))
     : null;
+  const judged = rows.filter((k) => k.relevance != null);
+  const bestRelevance = judged.length
+    ? judged.reduce((a, b) => ((b.relevance ?? 0) > (a.relevance ?? 0) ? b : a))
+    : null;
   const difficulties = rows
     .map((k) => k.difficulty)
     .filter((d): d is number => d != null);
@@ -282,6 +302,8 @@ function toGroup(term: string, rows: TrackedKeyword[]): KeywordGroup {
     countries: sorted.map((k) => k.country),
     bestPosition: ranked,
     bestPopularity,
+    bestRelevance,
+    relevance: bestRelevance?.relevance ?? null,
     popularity: bestPopularity?.popularity ?? null,
     difficulty: difficulties.length
       ? Math.round(difficulties.reduce((s, d) => s + d, 0) / difficulties.length)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Save, Trash2 } from "lucide-react";
+import { CircleCheck, CircleDashed, KeyRound, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/_ui/button";
 import Field from "@/components/_ui/field";
@@ -13,7 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/_ui/select";
-import { api } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
+import type { RelevanceStatus } from "@/lib/relevance/types";
 import SettingsCard from "./settings-card";
 
 export type PublicSettings = Record<string, string | { set: true }>;
@@ -52,6 +53,7 @@ export default function AiSettings({
   const hasKey = typeof settings["ai.anthropicKey"] === "object";
   const stored = settings["ai.model"];
   const model = typeof stored === "string" && stored ? stored : DEFAULT_MODEL;
+  const { data: relevance } = useApi<RelevanceStatus>("/api/relevance");
 
   async function put(patch: Record<string, string | null>, message: string) {
     setSaving(true);
@@ -171,6 +173,28 @@ export default function AiSettings({
           </Select>
         </Field>
       </div>
+      {relevance && (
+        <div className="border-border mt-5 flex items-start gap-2.5 border-t pt-4">
+          {relevance.configured ? (
+            <CircleCheck aria-hidden className="text-trend mt-px size-4 shrink-0" />
+          ) : (
+            <CircleDashed aria-hidden className="text-subtle mt-px size-4 shrink-0" />
+          )}
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-[14px] leading-tight">
+              Jev relevance:{" "}
+              {relevance.configured
+                ? `configured (${relevance.model})`
+                : "not configured (heuristic fallback)"}
+            </span>
+            <p className="caption-style text-subtle">
+              {relevance.configured
+                ? "TypeSafe's Jev model judges how well each keyword idea and tracked keyword fits your app. Set by the platform for every workspace."
+                : "Keyword relevance is estimated from word overlap with your listing. The platform operator can enable Jev by setting TYPESAFE_API_KEY on the server."}
+            </p>
+          </div>
+        </div>
+      )}
     </SettingsCard>
   );
 }

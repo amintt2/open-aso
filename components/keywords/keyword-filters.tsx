@@ -140,6 +140,12 @@ export default function KeywordFilters({
             checked={value.rankedOnly}
             onChange={(rankedOnly) => onChange({ ...value, rankedOnly })}
           />
+          <ToggleRow
+            id="kw-filter-unrelated"
+            label="Hide unrelated"
+            checked={value.hideUnrelated ?? false}
+            onChange={(hideUnrelated) => onChange({ ...value, hideUnrelated })}
+          />
         </div>
         <RangeField
           label="Popularity"

@@ -10,6 +10,7 @@ export const RATE_RULES = {
   detectMulti: { capacity: 2, refillPerHour: 2 },
   opportunities: { capacity: 10, refillPerHour: 10 },
   suggestions: { capacity: 10, refillPerHour: 10 },
+  relevance: { capacity: 20, refillPerHour: 30 },
   explore: { capacity: 60, refillPerHour: 120 },
   workerLease: { capacity: 40, refillPerHour: 2400 },
   workerComplete: { capacity: 40, refillPerHour: 2400 },

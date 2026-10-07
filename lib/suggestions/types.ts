@@ -1,4 +1,5 @@
 import type { TargetingLabel } from "@/lib/aso/scoring";
+import type { RelevanceCategory, RelevanceSource } from "@/lib/relevance/types";
 
 export type SuggestionSource = "hints" | "top-apps" | "metadata" | "competitors" | "combo" | "ai";
 
@@ -22,7 +23,27 @@ export type Suggestion = {
   downloadsEst: number;
   monthlySearches: number;
   resultsCount: number;
+  relevance?: number;
+  category?: RelevanceCategory;
+  relevanceSource?: RelevanceSource;
+  score?: number;
 };
+
+export type FilteredSuggestion = {
+  term: string;
+  sources: SuggestionSource[];
+  relevance: number;
+  category: RelevanceCategory;
+  languageMatch: boolean;
+  relevanceSource: RelevanceSource;
+};
+
+export const RELEVANCE_EXPONENT = 1;
+
+export function combinedScore(relevance: number | undefined, opportunity: number) {
+  if (relevance == null) return opportunity;
+  return Math.round(opportunity * Math.pow(Math.max(0, Math.min(100, relevance)) / 100, RELEVANCE_EXPONENT));
+}
 
 export type SuggestionsResult = {
   appId: number;
@@ -32,6 +53,11 @@ export type SuggestionsResult = {
   aiError?: string;
   candidatesConsidered: number;
   suggestions: Suggestion[];
+  judged?: number;
+  kept?: number;
+  relevanceSource?: RelevanceSource | "mixed";
+  relevanceError?: string;
+  filtered?: FilteredSuggestion[];
 };
 
 export type JobView<T> = {
