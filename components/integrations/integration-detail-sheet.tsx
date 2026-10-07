@@ -4,7 +4,13 @@ import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import Button from "@/components/_ui/button";
 import { ScrollArea } from "@/components/_ui/scroll-area";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/_ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/_ui/sheet";
 import { StatusTag, type CardState } from "./shared";
 
 export default function IntegrationDetailSheet({
@@ -37,10 +43,17 @@ export default function IntegrationDetailSheet({
                 <SheetTitle>{title}</SheetTitle>
                 <StatusTag state={state} label={stateLabel} />
               </div>
-              <SheetDescription className="truncate">{description}</SheetDescription>
+              <SheetDescription className="truncate">
+                {description}
+              </SheetDescription>
             </div>
           </div>
-          <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            onClick={() => onOpenChange(false)}
+          >
             <X className="size-4" />
           </Button>
         </SheetHeader>

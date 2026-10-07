@@ -11,7 +11,13 @@ import { timeAgo } from "@/lib/client/format";
 import CopyField, { CodeBlock } from "./copy-field";
 import { EventLog, LocalhostNotice, Section, Step, useOrigin } from "./shared";
 
-export default function SuperwallPanel({ status }: { status: IntegrationsStatus["superwall"] }) {
+export default function SuperwallPanel({
+  status,
+  canManage,
+}: {
+  status: IntegrationsStatus["superwall"];
+  canManage: boolean;
+}) {
   const origin = useOrigin();
   const [secret, setSecret] = useState("");
   const [saving, setSaving] = useState(false);
@@ -19,7 +25,10 @@ export default function SuperwallPanel({ status }: { status: IntegrationsStatus[
   async function save(value: string | null) {
     setSaving(true);
     try {
-      await api("/api/integrations/config", { method: "PUT", body: { superwallSecret: value } });
+      await api("/api/integrations/config", {
+        method: "PUT",
+        body: { superwallSecret: value },
+      });
       await revalidate("/api/integrations");
       setSecret("");
       toast.success(value ? "Signing secret saved" : "Signing secret removed");
@@ -36,15 +45,34 @@ export default function SuperwallPanel({ status }: { status: IntegrationsStatus[
       <Section title="Setup">
         <ol className="flex flex-col gap-6">
           <Step n={1} title="Create a webhook endpoint in Superwall">
-            <p className="text-soft">In the Superwall dashboard open Settings → Webhooks (Integrations), add an endpoint with this URL and subscribe to the purchase, renewal, cancellation and refund events.</p>
+            <p className="text-soft">
+              In the Superwall dashboard open Settings → Webhooks
+              (Integrations), add an endpoint with this URL and subscribe to the
+              purchase, renewal, cancellation and refund events.
+            </p>
             <CopyField label="Endpoint URL" value={`${origin}${status.path}`} />
+            <p className="caption-style text-subtle">
+              The w parameter is this workspace&apos;s id. Deliveries are only
+              accepted when they are signed with the secret saved below.
+            </p>
           </Step>
           <Step n={2} title="Paste the signing secret">
-            <p className="text-soft">Copy the endpoint&apos;s signing secret (it starts with whsec_). Every delivery is verified with HMAC-SHA256 and rejected if older than 5 minutes.</p>
+            <p className="text-soft">
+              Copy the endpoint&apos;s signing secret (it starts with whsec_).
+              Every delivery is verified with HMAC-SHA256 and rejected if older
+              than 5 minutes.
+            </p>
             {status.secretHint && (
               <div className="bg-secondary border-line-strong flex h-9 items-center justify-between gap-2 rounded-lg border pr-1 pl-3">
-                <span className="font-mono text-[13px]">{status.secretHint}</span>
-                <Button variant="ghost" size="sm" onClick={() => save(null)} disabled={saving}>
+                <span className="font-mono text-[13px]">
+                  {status.secretHint}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => save(null)}
+                  disabled={!canManage || saving}
+                >
                   <Trash2 aria-hidden className="size-3.5" />
                   Remove
                 </Button>
@@ -57,20 +85,50 @@ export default function SuperwallPanel({ status }: { status: IntegrationsStatus[
                 if (secret.trim()) void save(secret.trim());
               }}
             >
-              <Input type="password" autoComplete="off" spellCheck={false} placeholder={status.secretHint ? "Replace signing secret" : "whsec_…"} value={secret} onChange={(e) => setSecret(e.target.value)} aria-label="Superwall signing secret" />
-              <Button type="submit" variant="primary" size="md" disabled={saving || !secret.trim()}>
+              <Input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={!canManage}
+                placeholder={
+                  status.secretHint ? "Replace signing secret" : "whsec_…"
+                }
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                aria-label="Superwall signing secret"
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                disabled={!canManage || saving || !secret.trim()}
+              >
                 <Save aria-hidden className="size-3.5" />
                 Save
               </Button>
             </form>
+            {!canManage && (
+              <p className="caption-style text-subtle">
+                Only workspace owners and admins can change the signing secret.
+              </p>
+            )}
           </Step>
           <Step n={3} title="Tag users with the Open ASO user id">
-            <CodeBlock title="Swift" language="swift" code={`Superwall.shared.setUserAttributes(["openAsoId": OpenASO.userId])`} />
-            <p className="caption-style text-subtle">Events are matched to apps by bundle id and to installs by this attribute or by the app user id.</p>
+            <CodeBlock
+              title="Swift"
+              language="swift"
+              code={`Superwall.shared.setUserAttributes(["openAsoId": OpenASO.userId])`}
+            />
+            <p className="caption-style text-subtle">
+              Events are matched to apps by bundle id and to installs by this
+              attribute or by the app user id.
+            </p>
           </Step>
         </ol>
       </Section>
-      <Section title={`Recent events · ${status.events} stored${status.lastEvent ? ` · last ${timeAgo(status.lastEvent.receivedAt)}` : ""}`}>
+      <Section
+        title={`Recent events · ${status.events} stored${status.lastEvent ? ` · last ${timeAgo(status.lastEvent.receivedAt)}` : ""}`}
+      >
         <EventLog provider="superwall" />
       </Section>
     </div>

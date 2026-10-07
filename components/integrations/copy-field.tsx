@@ -17,7 +17,15 @@ export async function copyText(value: string, label = "Copied") {
   }
 }
 
-export function CopyButton({ value, label, className }: { value: string; label?: string; className?: string }) {
+export function CopyButton({
+  value,
+  label,
+  className,
+}: {
+  value: string;
+  label?: string;
+  className?: string;
+}) {
   const [done, setDone] = useState(false);
   return (
     <Button
@@ -32,12 +40,26 @@ export function CopyButton({ value, label, className }: { value: string; label?:
         }
       }}
     >
-      {done ? <Check aria-hidden className="text-trend size-3.5" /> : <Copy aria-hidden className="size-3.5" />}
+      {done ? (
+        <Check aria-hidden className="text-trend size-3.5" />
+      ) : (
+        <Copy aria-hidden className="size-3.5" />
+      )}
     </Button>
   );
 }
 
-export default function CopyField({ label, value, mono = true, secret = false }: { label: string; value: string; mono?: boolean; secret?: boolean }) {
+export default function CopyField({
+  label,
+  value,
+  mono = true,
+  secret = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  secret?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <span className="caption-style text-soft">{label}</span>
@@ -57,11 +79,21 @@ export default function CopyField({ label, value, mono = true, secret = false }:
   );
 }
 
-export function CodeBlock({ code, title, language }: { code: string; title: string; language: string }) {
+export function CodeBlock({
+  code,
+  title,
+  language,
+}: {
+  code: string;
+  title: string;
+  language: string;
+}) {
   return (
     <div className="border-line-strong overflow-hidden rounded-lg border">
       <div className="bg-secondary border-line-strong flex items-center justify-between gap-2 border-b py-1.5 pr-1.5 pl-3">
-        <span className="caption-style text-soft truncate font-mono">{title}</span>
+        <span className="caption-style text-soft truncate font-mono">
+          {title}
+        </span>
         <span className="flex items-center gap-2">
           <span className="caption-style text-subtle">{language}</span>
           <CopyButton value={code} label={title} className="size-6" />

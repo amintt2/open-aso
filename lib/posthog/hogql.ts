@@ -1,16 +1,28 @@
 import type { EventRole, RoleMap } from "./types";
 
-export type HogQL = { name: string; query: string; values: Record<string, string> };
+export type HogQL = {
+  name: string;
+  query: string;
+  values: Record<string, string>;
+};
 
 export type AppScope = { bundleId: string | null; prefix: string | null };
 
-export const FUNNEL_ROLES: EventRole[] = ["install", "onboarding_start", "onboarding_complete", "paywall_view", "purchase_start", "purchase_success"];
+export const FUNNEL_ROLES: EventRole[] = [
+  "install",
+  "onboarding_start",
+  "onboarding_complete",
+  "paywall_view",
+  "purchase_start",
+  "purchase_success",
+];
 
 const EXPOSURES = "event IN ('$feature_flag_called', '$experiment_exposure')";
 const NEVER = "0 = 1";
 
 function int(n: number) {
-  if (!Number.isInteger(n) || n < 0 || n > 3650) throw new Error(`Invalid day count ${n}`);
+  if (!Number.isInteger(n) || n < 0 || n > 3650)
+    throw new Error(`Invalid day count ${n}`);
   return n;
 }
 
@@ -26,7 +38,9 @@ class Params {
 
   in(expr: string, list: string[]) {
     const unique = [...new Set(list)];
-    return unique.length ? `${expr} IN (${unique.map((v) => this.value(v)).join(", ")})` : NEVER;
+    return unique.length
+      ? `${expr} IN (${unique.map((v) => this.value(v)).join(", ")})`
+      : NEVER;
   }
 }
 
@@ -39,18 +53,28 @@ function windowed(days: number) {
 }
 
 function appFilter(p: Params, scope: AppScope, lookbackDays: number) {
-  if (scope.bundleId) return `properties.$app_namespace = ${p.value(scope.bundleId)}`;
-  if (!scope.prefix) throw new Error("App mapping needs a bundle id or an event prefix");
+  if (scope.bundleId)
+    return `properties.$app_namespace = ${p.value(scope.bundleId)}`;
+  if (!scope.prefix)
+    throw new Error("App mapping needs a bundle id or an event prefix");
   const prefix = p.value(`${scope.prefix}.`);
   return `(startsWith(event, ${prefix}) OR ((startsWith(event, '$') OR startsWith(event, 'Application ')) AND distinct_id IN (SELECT distinct_id FROM events WHERE startsWith(event, ${prefix}) AND ${windowed(lookbackDays)})))`;
 }
 
 function build(name: string, p: Params, query: string): HogQL {
-  return { name: `open-aso ${name}`, query: query.replace(/\s+/g, " ").trim(), values: p.values };
+  return {
+    name: `open-aso ${name}`,
+    query: query.replace(/\s+/g, " ").trim(),
+    values: p.values,
+  };
 }
 
 export function connectionTestQuery(): HogQL {
-  return build("connection test", new Params(), "SELECT count() AS total FROM events WHERE timestamp >= now() - toIntervalDay(1)");
+  return build(
+    "connection test",
+    new Params(),
+    "SELECT count() AS total FROM events WHERE timestamp >= now() - toIntervalDay(1)",
+  );
 }
 
 export function discoverBundlesQuery(days = 30): HogQL {
@@ -88,7 +112,11 @@ export function catalogQuery(scope: AppScope, days = 90): HogQL {
   );
 }
 
-export function overviewDailyQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function overviewDailyQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days);
   return build(
@@ -101,7 +129,11 @@ export function overviewDailyQuery(scope: AppScope, roles: RoleMap, days: number
   );
 }
 
-export function overviewTotalsQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function overviewTotalsQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days * 2);
   const install = p.in("event", roles.install);
@@ -136,17 +168,33 @@ export function funnelSteps(roles: RoleMap) {
   return FUNNEL_ROLES.filter((role) => roles[role].length > 0);
 }
 
-export function funnelQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function funnelQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const steps = funnelSteps(roles);
-  if (!steps.length) throw new Error("No funnel events are mapped for this app");
+  if (!steps.length)
+    throw new Error("No funnel events are mapped for this app");
   const p = new Params();
   const app = appFilter(p, scope, days);
-  const all = [...new Set([...steps.flatMap((role) => roles[role]), ...roles.purchase_start, ...roles.purchase_cancel])];
+  const all = [
+    ...new Set([
+      ...steps.flatMap((role) => roles[role]),
+      ...roles.purchase_start,
+      ...roles.purchase_cancel,
+    ]),
+  ];
   const first = p.in("event", roles[steps[0]]);
   const inner = [
     "person_id",
     `minIf(toUnixTimestamp(timestamp), ${first}) AS t0`,
-    ...steps.slice(1).map((role, i) => `groupArrayIf(toUnixTimestamp(timestamp), ${p.in("event", roles[role])}) AS a${i + 1}`),
+    ...steps
+      .slice(1)
+      .map(
+        (role, i) =>
+          `groupArrayIf(toUnixTimestamp(timestamp), ${p.in("event", roles[role])}) AS a${i + 1}`,
+      ),
     `countIf(${p.in("event", roles.purchase_start)}) > 0 AS has_start`,
     `minIf(toUnixTimestamp(timestamp), ${p.in("event", roles.purchase_start)}) AS start_at`,
     `maxIf(toUnixTimestamp(timestamp), ${p.in("event", roles.purchase_cancel)}) AS cancel_at`,
@@ -158,7 +206,10 @@ export function funnelQuery(scope: AppScope, roles: RoleMap, days: number): HogQ
     "cancel_at",
     ...steps.slice(1).flatMap((_, i) => {
       const n = i + 1;
-      return [`arrayFilter(x -> t${n - 1} > 0 AND x >= t${n - 1}, a${n}) AS f${n}`, `if(length(f${n}) > 0, arrayMin(f${n}), 0) AS t${n}`];
+      return [
+        `arrayFilter(x -> t${n - 1} > 0 AND x >= t${n - 1}, a${n}) AS f${n}`,
+        `if(length(f${n}) > 0, arrayMin(f${n}), 0) AS t${n}`,
+      ];
     }),
   ];
   const outer = [
@@ -184,13 +235,19 @@ export function funnelQuery(scope: AppScope, roles: RoleMap, days: number): HogQ
   );
 }
 
-export function retentionQuery(scope: AppScope, roles: RoleMap, days: number, weekly: boolean): HogQL {
+export function retentionQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+  weekly: boolean,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days);
   const install = p.in("event", roles.install);
   const activity = roles.open.length ? p.in("event", roles.open) : "1 = 1";
   const cohort = weekly ? "toStartOfWeek(d0, 1)" : "d0";
-  const retained = (n: number) => `countIf(addDays(d0, ${n}) <= today()) AS e${n}, countIf(has(active, addDays(d0, ${n}))) AS r${n}`;
+  const retained = (n: number) =>
+    `countIf(addDays(d0, ${n}) <= today()) AS e${n}, countIf(has(active, addDays(d0, ${n}))) AS r${n}`;
   return build(
     "retention",
     p,
@@ -206,7 +263,11 @@ export function retentionQuery(scope: AppScope, roles: RoleMap, days: number, we
   );
 }
 
-export function countriesQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function countriesQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days);
   return build(
@@ -219,7 +280,11 @@ export function countriesQuery(scope: AppScope, roles: RoleMap, days: number): H
   );
 }
 
-export function citiesQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function citiesQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days);
   return build(
@@ -233,7 +298,11 @@ export function citiesQuery(scope: AppScope, roles: RoleMap, days: number): HogQ
   );
 }
 
-export function versionsQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function versionsQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days);
   return build(
@@ -247,13 +316,20 @@ export function versionsQuery(scope: AppScope, roles: RoleMap, days: number): Ho
   );
 }
 
-export function experimentsQuery(scope: AppScope, roles: RoleMap, days: number): HogQL {
+export function experimentsQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+): HogQL {
   const p = new Params();
   const exposureApp = appFilter(p, scope, days);
   const conversionApp = appFilter(p, scope, days);
   const paywall = p.in("event", roles.paywall_view);
   const purchase = p.in("event", roles.purchase_success);
-  const conversions = p.in("event", [...roles.paywall_view, ...roles.purchase_success]);
+  const conversions = p.in("event", [
+    ...roles.paywall_view,
+    ...roles.purchase_success,
+  ]);
   return build(
     "experiments",
     p,
@@ -292,10 +368,17 @@ export function liveEventsQuery(scope: AppScope, days: number): HogQL {
   );
 }
 
-export function newUsersQuery(scope: AppScope, roles: RoleMap, days: number, country: string | null): HogQL {
+export function newUsersQuery(
+  scope: AppScope,
+  roles: RoleMap,
+  days: number,
+  country: string | null,
+): HogQL {
   const p = new Params();
   const app = appFilter(p, scope, days);
-  const countryFilter = country ? ` AND upper(ifNull(properties.$geoip_country_code, '')) = ${p.value(country.toUpperCase())}` : "";
+  const countryFilter = country
+    ? ` AND upper(ifNull(properties.$geoip_country_code, '')) = ${p.value(country.toUpperCase())}`
+    : "";
   return build(
     "new users",
     p,

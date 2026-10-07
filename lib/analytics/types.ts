@@ -5,7 +5,13 @@ export type AnalyticsQuery = {
   demo?: "auto" | "never" | "only";
 };
 
-export type AnalyticsMeta = { demo: boolean; notice: string | null; from: string; to: string; days: number };
+export type AnalyticsMeta = {
+  demo: boolean;
+  notice: string | null;
+  from: string;
+  to: string;
+  days: number;
+};
 
 export type OverviewTotals = {
   installs: number;
@@ -28,7 +34,11 @@ export type OverviewPoint = {
   netRevenue: number;
 };
 
-export type OverviewResult = AnalyticsMeta & { totals: OverviewTotals; previous: OverviewTotals; series: OverviewPoint[] };
+export type OverviewResult = AnalyticsMeta & {
+  totals: OverviewTotals;
+  previous: OverviewTotals;
+  series: OverviewPoint[];
+};
 
 export type SourceRow = {
   source: "apple_ads" | "organic";
@@ -45,12 +55,34 @@ export type SourcesResult = AnalyticsMeta & {
   sources: SourceRow[];
   unattributedRevenue: number;
   daily: { date: string; apple_ads: number; organic: number }[];
-  campaigns: { campaignId: string; installs: number; trials: number; revenue: number; spend: number; roas: number | null }[];
+  campaigns: {
+    campaignId: string;
+    installs: number;
+    trials: number;
+    revenue: number;
+    spend: number;
+    roas: number | null;
+  }[];
 };
 
-export type CountryRow = { country: string; installs: number; trials: number; payers: number; revenue: number; revenuePerInstall: number | null };
-export type CityRow = { city: string; country: string | null; installs: number; revenue: number };
-export type GeographyResult = AnalyticsMeta & { countries: CountryRow[]; cities: CityRow[] };
+export type CountryRow = {
+  country: string;
+  installs: number;
+  trials: number;
+  payers: number;
+  revenue: number;
+  revenuePerInstall: number | null;
+};
+export type CityRow = {
+  city: string;
+  country: string | null;
+  installs: number;
+  revenue: number;
+};
+export type GeographyResult = AnalyticsMeta & {
+  countries: CountryRow[];
+  cities: CityRow[];
+};
 
 export type RetentionCohort = {
   cohort: string;
@@ -88,7 +120,16 @@ export type KeywordRoasRow = {
 
 export type KeywordRoasResult = AnalyticsMeta & {
   keywords: KeywordRoasRow[];
-  totals: { spend: number; installs: number; adsInstalls: number; trials: number; revenue: number; cpi: number | null; trialRate: number | null; roas: number | null };
+  totals: {
+    spend: number;
+    installs: number;
+    adsInstalls: number;
+    trials: number;
+    revenue: number;
+    cpi: number | null;
+    trialRate: number | null;
+    roas: number | null;
+  };
   currency: string;
 };
 
@@ -103,4 +144,8 @@ export type KeywordTrendPoint = {
   cumulativeRoas: number | null;
 };
 
-export type KeywordTrendResult = AnalyticsMeta & { keywordId: string; keyword: string | null; series: KeywordTrendPoint[] };
+export type KeywordTrendResult = AnalyticsMeta & {
+  keywordId: string;
+  keyword: string | null;
+  series: KeywordTrendPoint[];
+};

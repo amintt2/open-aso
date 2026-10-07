@@ -2,6 +2,12 @@ import { listMappings } from "./apps";
 import { credentialStatus } from "./client";
 import type { PosthogStatus } from "./types";
 
-export function posthogStatus(): PosthogStatus {
-  return { ...credentialStatus(), mappedApps: listMappings().length };
+export async function posthogStatus(
+  workspaceId: string,
+): Promise<PosthogStatus> {
+  const [credentials, mappings] = await Promise.all([
+    credentialStatus(workspaceId),
+    listMappings(workspaceId),
+  ]);
+  return { ...credentials, mappedApps: mappings.length };
 }

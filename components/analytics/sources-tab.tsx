@@ -1,14 +1,40 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/_ui/table";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/_ui/table";
 import type { SourceRow, SourcesResult } from "@/lib/analytics/types";
 import { formatCompact, formatMoney, formatPercent } from "@/lib/client/format";
-import { AXIS_TICK, ChartTooltip, GRID, Legend, Panel, SERIES, shortDate } from "./chart-kit";
+import {
+  AXIS_TICK,
+  ChartTooltip,
+  GRID,
+  Legend,
+  Panel,
+  SERIES,
+  shortDate,
+} from "./chart-kit";
 import { DemoBanner, ErrorBlock, LoadingBlock, MetricBar } from "./parts";
 import { useAnalytics, type AnalyticsFilterState } from "./use-analytics";
 
-const SOURCE_META: Record<SourceRow["source"], { label: string; color: string }> = {
+const SOURCE_META: Record<
+  SourceRow["source"],
+  { label: string; color: string }
+> = {
   apple_ads: { label: "Apple Ads", color: SERIES.blue },
   organic: { label: "Organic", color: SERIES.orange },
 };
@@ -28,10 +54,16 @@ function SourceCard({ row, share }: { row: SourceRow; share: number | null }) {
     <section className="bg-card border-border flex flex-col gap-4 rounded-xl border p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="h3-style flex items-center gap-2">
-          <span aria-hidden className="size-2.5 rounded-[3px]" style={{ background: meta.color }} />
+          <span
+            aria-hidden
+            className="size-2.5 rounded-[3px]"
+            style={{ background: meta.color }}
+          />
           {meta.label}
         </h2>
-        <span className="caption-style text-subtle">{formatPercent(share)} of installs</span>
+        <span className="caption-style text-subtle">
+          {formatPercent(share)} of installs
+        </span>
       </div>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
         {stats.map((s) => (
@@ -45,7 +77,11 @@ function SourceCard({ row, share }: { row: SourceRow; share: number | null }) {
   );
 }
 
-export default function SourcesTab({ filters }: { filters: AnalyticsFilterState }) {
+export default function SourcesTab({
+  filters,
+}: {
+  filters: AnalyticsFilterState;
+}) {
   const { data, error } = useAnalytics<SourcesResult>("sources", filters);
   if (error) return <ErrorBlock message={error.message} />;
   if (!data) return <LoadingBlock />;
@@ -56,44 +92,98 @@ export default function SourcesTab({ filters }: { filters: AnalyticsFilterState 
       <DemoBanner notice={data.notice} />
       <div className="grid gap-4 lg:grid-cols-2">
         {data.sources.map((row) => (
-          <SourceCard key={row.source} row={row} share={total ? row.installs / total : null} />
+          <SourceCard
+            key={row.source}
+            row={row}
+            share={total ? row.installs / total : null}
+          />
         ))}
       </div>
       <Panel
         title="Installs by source"
         description="Trials, conversion and revenue are cohort-based: they follow users who installed in this period."
-        actions={<Legend items={Object.values(SOURCE_META).map((m) => ({ label: m.label, color: m.color }))} />}
+        actions={
+          <Legend
+            items={Object.values(SOURCE_META).map((m) => ({
+              label: m.label,
+              color: m.color,
+            }))}
+          />
+        }
       >
         <div className="h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.daily} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+            <BarChart
+              data={data.daily}
+              margin={{ top: 4, right: 4, bottom: 0, left: -12 }}
+            >
               <CartesianGrid vertical={false} stroke={GRID} />
-              <XAxis dataKey="date" tickFormatter={shortDate} tick={AXIS_TICK} axisLine={false} tickLine={false} interval={data.days > 30 ? 13 : data.days > 7 ? 4 : 0} />
-              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
+              <XAxis
+                dataKey="date"
+                tickFormatter={shortDate}
+                tick={AXIS_TICK}
+                axisLine={false}
+                tickLine={false}
+                interval={data.days > 30 ? 13 : data.days > 7 ? 4 : 0}
+              />
+              <YAxis
+                tick={AXIS_TICK}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
               <Tooltip
                 cursor={{ fill: "rgba(255,255,255,0.04)" }}
                 content={(props) => (
                   <ChartTooltip
                     {...props}
                     rows={(pt) => [
-                      { label: "Apple Ads", value: formatCompact(pt.apple_ads as number), color: SERIES.blue },
-                      { label: "Organic", value: formatCompact(pt.organic as number), color: SERIES.orange },
+                      {
+                        label: "Apple Ads",
+                        value: formatCompact(pt.apple_ads as number),
+                        color: SERIES.blue,
+                      },
+                      {
+                        label: "Organic",
+                        value: formatCompact(pt.organic as number),
+                        color: SERIES.orange,
+                      },
                     ]}
                   />
                 )}
               />
-              <Bar dataKey="organic" stackId="s" fill={SERIES.orange} maxBarSize={18} stroke="#1b1d20" strokeWidth={1} />
-              <Bar dataKey="apple_ads" stackId="s" fill={SERIES.blue} radius={[4, 4, 0, 0]} maxBarSize={18} stroke="#1b1d20" strokeWidth={1} />
+              <Bar
+                dataKey="organic"
+                stackId="s"
+                fill={SERIES.orange}
+                maxBarSize={18}
+                stroke="#1b1d20"
+                strokeWidth={1}
+              />
+              <Bar
+                dataKey="apple_ads"
+                stackId="s"
+                fill={SERIES.blue}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={18}
+                stroke="#1b1d20"
+                strokeWidth={1}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
         {data.unattributedRevenue !== 0 && (
           <p className="caption-style text-subtle">
-            {formatMoney(data.unattributedRevenue)} of revenue in this period came from users with no install record (SDK not installed for them, or ids not linked).
+            {formatMoney(data.unattributedRevenue)} of revenue in this period
+            came from users with no install record (SDK not installed for them,
+            or ids not linked).
           </p>
         )}
       </Panel>
-      <Panel title="Apple Ads campaigns" description="Installs attributed via AdServices, with spend from Apple Ads reports.">
+      <Panel
+        title="Apple Ads campaigns"
+        description="Installs attributed via AdServices, with spend from Apple Ads reports."
+      >
         {data.campaigns.length ? (
           <div className="-mx-4 overflow-x-auto">
             <Table>
@@ -111,22 +201,40 @@ export default function SourcesTab({ filters }: { filters: AnalyticsFilterState 
               <TableBody>
                 {data.campaigns.map((c) => (
                   <TableRow key={c.campaignId}>
-                    <TableCell className="pl-4 font-mono text-[13px]">{c.campaignId}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCompact(c.installs)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCompact(c.trials)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.spend ? formatMoney(c.spend) : "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(c.revenue)}</TableCell>
-                    <TableCell>
-                      <MetricBar value={c.revenue} max={maxRevenue} color={SERIES.aqua} />
+                    <TableCell className="pl-4 font-mono text-[13px]">
+                      {c.campaignId}
                     </TableCell>
-                    <TableCell className="pr-4 text-right tabular-nums">{c.roas == null ? "—" : `${c.roas.toFixed(2)}×`}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCompact(c.installs)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCompact(c.trials)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {c.spend ? formatMoney(c.spend) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatMoney(c.revenue)}
+                    </TableCell>
+                    <TableCell>
+                      <MetricBar
+                        value={c.revenue}
+                        max={maxRevenue}
+                        color={SERIES.aqua}
+                      />
+                    </TableCell>
+                    <TableCell className="pr-4 text-right tabular-nums">
+                      {c.roas == null ? "—" : `${c.roas.toFixed(2)}×`}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
         ) : (
-          <p className="text-subtle">No Apple Ads-attributed installs in this period.</p>
+          <p className="text-subtle">
+            No Apple Ads-attributed installs in this period.
+          </p>
         )}
       </Panel>
     </div>

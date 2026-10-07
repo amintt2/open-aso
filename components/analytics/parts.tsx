@@ -22,7 +22,12 @@ export function DemoBanner({ notice }: { notice: string | null }) {
 
 export function LoadingBlock({ className }: { className?: string }) {
   return (
-    <div className={cn("text-subtle flex min-h-[240px] items-center justify-center", className)}>
+    <div
+      className={cn(
+        "text-subtle flex min-h-[240px] items-center justify-center",
+        className,
+      )}
+    >
       <Loader2 aria-label="Loading" className="size-5 animate-spin" />
     </div>
   );
@@ -37,36 +42,78 @@ export function ErrorBlock({ message }: { message: string }) {
   );
 }
 
-export function Delta({ current, previous, invert = false }: { current: number; previous: number; invert?: boolean }) {
-  if (!previous) return <span className="caption-style text-subtle">no prior data</span>;
+export function Delta({
+  current,
+  previous,
+  invert = false,
+}: {
+  current: number;
+  previous: number;
+  invert?: boolean;
+}) {
+  if (!previous)
+    return <span className="caption-style text-subtle">no prior data</span>;
   const change = (current - previous) / Math.abs(previous);
   if (!Number.isFinite(change)) return null;
   const good = invert ? change < 0 : change > 0;
   return (
-    <span className={cn("caption-style tabular-nums", Math.abs(change) < 0.005 ? "text-subtle" : good ? "text-trend" : "text-danger")}>
-      {change > 0 ? "▲" : change < 0 ? "▼" : ""} {Math.abs(change * 100).toFixed(1)}%
+    <span
+      className={cn(
+        "caption-style tabular-nums",
+        Math.abs(change) < 0.005
+          ? "text-subtle"
+          : good
+            ? "text-trend"
+            : "text-danger",
+      )}
+    >
+      {change > 0 ? "▲" : change < 0 ? "▼" : ""}{" "}
+      {Math.abs(change * 100).toFixed(1)}%
       <span className="text-subtle"> vs prior</span>
     </span>
   );
 }
 
-export function KpiTile({ label, value, delta, hint }: { label: string; value: string; delta?: React.ReactNode; hint?: string }) {
+export function KpiTile({
+  label,
+  value,
+  delta,
+  hint,
+}: {
+  label: string;
+  value: string;
+  delta?: React.ReactNode;
+  hint?: string;
+}) {
   return (
     <div className="bg-card border-border flex min-w-0 flex-col gap-3 rounded-xl border p-4">
       <span className="eyebrow-style text-subtle truncate" title={hint}>
         {label}
       </span>
-      <span className="text-[24px] leading-none font-medium tracking-tight tabular-nums">{value}</span>
+      <span className="text-[24px] leading-none font-medium tracking-tight tabular-nums">
+        {value}
+      </span>
       {delta}
     </div>
   );
 }
 
-export function MetricBar({ value, max, color }: { value: number; max: number; color: string }) {
+export function MetricBar({
+  value,
+  max,
+  color,
+}: {
+  value: number;
+  max: number;
+  color: string;
+}) {
   const pct = max > 0 ? Math.max(2, (value / max) * 100) : 0;
   return (
     <span className="bg-track/60 block h-1.5 w-full min-w-16 overflow-hidden rounded-full">
-      <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      <span
+        className="block h-full rounded-full"
+        style={{ width: `${pct}%`, background: color }}
+      />
     </span>
   );
 }

@@ -1,48 +1,120 @@
+import { db } from "@/lib/server/db";
 import { getSetting } from "@/lib/server/settings";
-import { analyticsDb } from "@/lib/analytics/schema";
-import { maskSecret } from "./secrets";
-import { providerActivity, type ProviderActivity } from "./log";
+import { tokenInfo } from "@/lib/server/tokens";
 import { posthogStatus } from "@/lib/posthog/status";
 import type { PosthogStatus } from "@/lib/posthog/types";
+import { providerActivity, type ProviderActivity } from "./log";
+
+type TokenState = {
+  configured: boolean;
+  tokenHint: string | null;
+  tokenCreatedAt: string | null;
+  tokenLastUsedAt: string | null;
+};
 
 export type IntegrationsStatus = {
-  revenuecat: ProviderActivity & { configured: boolean; tokenHint: string | null; path: string; events: number };
-  superwall: ProviderActivity & { configured: boolean; secretHint: string | null; path: string; events: number };
-  sdk: ProviderActivity & {
+  workspaceId: string;
+  canManage: boolean;
+  revenuecat: ProviderActivity & TokenState & { path: string; events: number };
+  superwall: ProviderActivity & {
     configured: boolean;
-    tokenHint: string | null;
-    installPath: string;
-    eventPath: string;
-    installs: number;
-    appleAdsInstalls: number;
-    pendingAttribution: number;
-    lastInstallAt: string | null;
+    secretHint: string | null;
+    path: string;
+    events: number;
   };
+  sdk: ProviderActivity &
+    TokenState & {
+      installPath: string;
+      eventPath: string;
+      installs: number;
+      appleAdsInstalls: number;
+      pendingAttribution: number;
+      lastInstallAt: string | null;
+    };
   posthog: PosthogStatus;
 };
 
-export function integrationsStatus(): IntegrationsStatus {
-  const d = analyticsDb();
-  const rc = getSetting("integrations.revenuecat.token");
-  const sw = getSetting("integrations.superwall.secret");
-  const sdk = getSetting("integrations.sdk.token");
-  const providerEvents = (provider: string) => (d.prepare("SELECT COUNT(*) AS n FROM revenue_events WHERE provider = ?").get(provider) as { n: number }).n;
-  const installs = d.prepare("SELECT COUNT(*) AS n, SUM(source = 'apple_ads') AS ads, MAX(installed_at) AS last FROM installs").get() as { n: number; ads: number | null; last: string | null };
-  const pending = (d.prepare("SELECT COUNT(*) AS n FROM attribution_pending WHERE status = 'pending'").get() as { n: number }).n;
+async function tokenState(
+  workspaceId: string,
+  kind: "revenuecat" | "sdk",
+): Promise<TokenState> {
+  const info = await tokenInfo(workspaceId, kind);
   return {
-    revenuecat: { ...providerActivity("revenuecat"), configured: !!rc, tokenHint: maskSecret(rc), path: "/api/integrations/revenuecat", events: providerEvents("revenuecat") },
-    superwall: { ...providerActivity("superwall"), configured: !!sw, secretHint: sw ? `whsec_••••${sw.slice(-4)}` : null, path: "/api/integrations/superwall", events: providerEvents("superwall") },
+    configured: !!info,
+    tokenHint: info?.hint ?? null,
+    tokenCreatedAt: info?.created_at ?? null,
+    tokenLastUsedAt: info?.last_used_at ?? null,
+  };
+}
+
+export function superwallPath(workspaceId: string) {
+  return `/api/integrations/superwall?w=${encodeURIComponent(workspaceId)}`;
+}
+
+export async function integrationsStatus(
+  workspaceId: string,
+  canManage = false,
+): Promise<IntegrationsStatus> {
+  const [
+    rc,
+    sdk,
+    sw,
+    events,
+    installs,
+    pending,
+    rcActivity,
+    swActivity,
+    sdkActivity,
+    posthog,
+  ] = await Promise.all([
+    tokenState(workspaceId, "revenuecat"),
+    tokenState(workspaceId, "sdk"),
+    getSetting(workspaceId, "integrations.superwall.secret"),
+    db.all<{ provider: string; n: number }>(
+      "SELECT provider, COUNT(*) AS n FROM revenue_events WHERE workspace_id = ? GROUP BY provider",
+      [workspaceId],
+    ),
+    db.get<{ n: number; ads: number; last: string | null }>(
+      "SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE source = 'apple_ads') AS ads, MAX(installed_at) AS last FROM installs WHERE workspace_id = ?",
+      [workspaceId],
+    ),
+    db.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM attribution_pending WHERE workspace_id = ? AND status = 'pending'",
+      [workspaceId],
+    ),
+    providerActivity(workspaceId, "revenuecat"),
+    providerActivity(workspaceId, "superwall"),
+    providerActivity(workspaceId, "sdk"),
+    posthogStatus(workspaceId),
+  ]);
+  const providerEvents = (provider: string) =>
+    events.find((e) => e.provider === provider)?.n ?? 0;
+  return {
+    workspaceId,
+    canManage,
+    revenuecat: {
+      ...rcActivity,
+      ...rc,
+      path: "/api/integrations/revenuecat",
+      events: providerEvents("revenuecat"),
+    },
+    superwall: {
+      ...swActivity,
+      configured: !!sw,
+      secretHint: sw ? `whsec_••••${sw.slice(-4)}` : null,
+      path: superwallPath(workspaceId),
+      events: providerEvents("superwall"),
+    },
     sdk: {
-      ...providerActivity("sdk"),
-      configured: !!sdk,
-      tokenHint: maskSecret(sdk),
+      ...sdkActivity,
+      ...sdk,
       installPath: "/api/attribution/install",
       eventPath: "/api/attribution/event",
-      installs: installs.n,
-      appleAdsInstalls: installs.ads ?? 0,
-      pendingAttribution: pending,
-      lastInstallAt: installs.last,
+      installs: installs?.n ?? 0,
+      appleAdsInstalls: installs?.ads ?? 0,
+      pendingAttribution: pending?.n ?? 0,
+      lastInstallAt: installs?.last ?? null,
     },
-    posthog: posthogStatus(),
+    posthog,
   };
 }

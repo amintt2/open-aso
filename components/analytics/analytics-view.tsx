@@ -3,7 +3,12 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import PageHeader from "@/components/shell/page-header";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/_ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/_ui/tabs";
 import { ScrollArea } from "@/components/_ui/scroll-area";
 import AnalyticsFilters from "./analytics-filters";
 import OverviewTab from "./overview-tab";
@@ -29,9 +34,16 @@ export default function AnalyticsView() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const tab = (TABS.find((t) => t.value === params.get("tab"))?.value ?? "overview") as TabValue;
-  const days = [7, 30, 90].includes(Number(params.get("days"))) ? Number(params.get("days")) : 30;
-  const filters: AnalyticsFilterState = { appId: params.get("app") ?? "all", days, sandbox: params.get("sandbox") === "1" };
+  const tab = (TABS.find((t) => t.value === params.get("tab"))?.value ??
+    "overview") as TabValue;
+  const days = [7, 30, 90].includes(Number(params.get("days")))
+    ? Number(params.get("days"))
+    : 30;
+  const filters: AnalyticsFilterState = {
+    appId: params.get("app") ?? "all",
+    days,
+    sandbox: params.get("sandbox") === "1",
+  };
 
   const update = useCallback(
     (patch: Record<string, string | null>) => {
@@ -46,13 +58,25 @@ export default function AnalyticsView() {
   );
 
   return (
-    <Tabs value={tab} onValueChange={(value) => update({ tab: value === "overview" ? null : value })} className="min-h-0 flex-1">
+    <Tabs
+      value={tab}
+      onValueChange={(value) =>
+        update({ tab: value === "overview" ? null : value })
+      }
+      className="min-h-0 flex-1"
+    >
       <PageHeader
         title="Analytics"
         actions={
           <AnalyticsFilters
             value={filters}
-            onChange={(next) => update({ app: next.appId === "all" ? null : next.appId, days: next.days === 30 ? null : String(next.days), sandbox: next.sandbox ? "1" : null })}
+            onChange={(next) =>
+              update({
+                app: next.appId === "all" ? null : next.appId,
+                days: next.days === 30 ? null : String(next.days),
+                sandbox: next.sandbox ? "1" : null,
+              })
+            }
           />
         }
       >
@@ -82,7 +106,10 @@ export default function AnalyticsView() {
             <KeywordRoasTab filters={filters} />
           </TabsContent>
           <TabsContent value="product">
-            <ProductTab filters={filters} onAppChange={(app) => update({ app })} />
+            <ProductTab
+              filters={filters}
+              onAppChange={(app) => update({ app })}
+            />
           </TabsContent>
         </div>
       </ScrollArea>

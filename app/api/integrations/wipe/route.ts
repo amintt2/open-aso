@@ -1,12 +1,14 @@
 import { z } from "zod";
-import { assertConfirmation, wipeAll } from "@/lib/integrations/data";
+import { assertConfirmation, wipeWorkspace } from "@/lib/integrations/data";
+import { requireWorkspace } from "@/lib/server/context";
 import { body, json, route } from "@/lib/server/http";
 
 export const dynamic = "force-dynamic";
 
 export const POST = route(async (req) => {
+  const { workspaceId } = await requireWorkspace("admin");
   const { confirm } = await body(req, z.object({ confirm: z.string() }));
   assertConfirmation(confirm);
-  wipeAll();
+  await wipeWorkspace(workspaceId);
   return json({ ok: true });
 });

@@ -1,10 +1,19 @@
 import { z } from "zod";
 import { HttpError } from "@/lib/server/http";
-import { analyticsDb } from "@/lib/analytics/schema";
 import { logIntegrationEvent } from "./log";
-import { appIdFromRef, candidateUser, isoFromMs, normalizeCountry, saveRevenueEvent, type RevenueType } from "./revenue";
+import {
+  appIdFromRef,
+  candidateUser,
+  isoFromMs,
+  normalizeCountry,
+  saveRevenueEvent,
+  soleOwnedAppId,
+  type RevenueType,
+} from "./revenue";
 
-const attributeValue = z.object({ value: z.string().nullable().optional() }).passthrough();
+const attributeValue = z
+  .object({ value: z.string().nullable().optional() })
+  .passthrough();
 
 const rcEvent = z
   .object({
@@ -25,17 +34,26 @@ const rcEvent = z
     environment: z.string().nullable().optional(),
     cancel_reason: z.string().nullable().optional(),
     is_trial_conversion: z.boolean().nullable().optional(),
-    subscriber_attributes: z.record(z.string(), attributeValue).nullable().optional(),
+    subscriber_attributes: z
+      .record(z.string(), attributeValue)
+      .nullable()
+      .optional(),
   })
   .passthrough();
 
-export const revenueCatWebhook = z.object({ api_version: z.string().optional(), event: rcEvent }).passthrough();
+export const revenueCatWebhook = z
+  .object({ api_version: z.string().optional(), event: rcEvent })
+  .passthrough();
 
 type RcEvent = z.infer<typeof rcEvent>;
 
 function usdAmount(event: RcEvent) {
   if (typeof event.price === "number") return event.price;
-  if (typeof event.price_in_purchased_currency === "number" && (event.currency ?? "").toUpperCase() === "USD") return event.price_in_purchased_currency;
+  if (
+    typeof event.price_in_purchased_currency === "number" &&
+    (event.currency ?? "").toUpperCase() === "USD"
+  )
+    return event.price_in_purchased_currency;
   return 0;
 }
 
@@ -54,7 +72,9 @@ export function mapRevenueCatType(event: RcEvent, amount: number): RevenueType {
     case "PRODUCT_CHANGE":
       return "product_change";
     case "CANCELLATION":
-      return (event.cancel_reason ?? "").toUpperCase() === "CUSTOMER_SUPPORT" ? "refund" : "cancellation";
+      return (event.cancel_reason ?? "").toUpperCase() === "CUSTOMER_SUPPORT"
+        ? "refund"
+        : "cancellation";
     case "UNCANCELLATION":
       return "uncancellation";
     case "EXPIRATION":
@@ -78,37 +98,73 @@ function attribute(event: RcEvent, ...keys: string[]) {
   return null;
 }
 
-export function soleOwnedAppId() {
-  const rows = analyticsDb().prepare("SELECT id FROM apps WHERE is_mine = 1 LIMIT 2").all() as { id: number }[];
-  return rows.length === 1 ? rows[0].id : null;
-}
-
-export function handleRevenueCat(payload: unknown, appRef: string | null) {
+export async function handleRevenueCat(
+  workspaceId: string,
+  payload: unknown,
+  appRef: string | null,
+) {
   const parsed = revenueCatWebhook.safeParse(payload);
   if (!parsed.success) {
-    logIntegrationEvent("revenuecat", "error", null, "Malformed webhook payload");
+    await logIntegrationEvent(
+      workspaceId,
+      "revenuecat",
+      "error",
+      null,
+      "Malformed webhook payload",
+    );
     throw new HttpError(400, "Malformed RevenueCat webhook payload");
   }
   const event = parsed.data.event;
   const amount = usdAmount(event);
   const type = mapRevenueCatType(event, amount);
-  const user = candidateUser([attribute(event, "$openAsoId", "openAsoId"), event.app_user_id, event.original_app_user_id, ...(event.aliases ?? [])]);
-  const appId = appIdFromRef(appRef) ?? user.appId ?? soleOwnedAppId();
-  const occurredAt = isoFromMs(["initial_purchase", "trial_started", "renewal", "trial_converted", "non_renewing_purchase"].includes(type) ? (event.purchased_at_ms ?? event.event_timestamp_ms) : event.event_timestamp_ms);
-  const result = saveRevenueEvent({
+  const user = await candidateUser(workspaceId, [
+    attribute(event, "$openAsoId", "openAsoId"),
+    event.app_user_id,
+    event.original_app_user_id,
+    ...(event.aliases ?? []),
+  ]);
+  const appId =
+    (await appIdFromRef(workspaceId, appRef)) ??
+    user.appId ??
+    (await soleOwnedAppId(workspaceId));
+  const occurredAt = isoFromMs(
+    [
+      "initial_purchase",
+      "trial_started",
+      "renewal",
+      "trial_converted",
+      "non_renewing_purchase",
+    ].includes(type)
+      ? (event.purchased_at_ms ?? event.event_timestamp_ms)
+      : event.event_timestamp_ms,
+  );
+  const result = await saveRevenueEvent(workspaceId, {
     id: `rc_${event.id}`,
     provider: "revenuecat",
     appId,
     userId: user.userId,
     type,
     productId: event.new_product_id ?? event.product_id ?? null,
-    amountUsd: type === "trial_started" || type === "test" || type === "cancellation" ? 0 : amount,
+    amountUsd:
+      type === "trial_started" || type === "test" || type === "cancellation"
+        ? 0
+        : amount,
     country: normalizeCountry(event.country_code),
     occurredAt,
     environment: event.environment ?? null,
     raw: event,
   });
-  const label = type === "test" ? "Test event received" : `${event.type}${amount ? ` · $${amount.toFixed(2)}` : ""}${user.userId ? ` · ${user.userId}` : ""}`;
-  logIntegrationEvent("revenuecat", result === "duplicate" ? "duplicate" : "ok", event.type, label, event.environment ?? null);
+  const label =
+    type === "test"
+      ? "Test event received"
+      : `${event.type}${amount ? ` · $${amount.toFixed(2)}` : ""}${user.userId ? ` · ${user.userId}` : ""}`;
+  await logIntegrationEvent(
+    workspaceId,
+    "revenuecat",
+    result === "duplicate" ? "duplicate" : "ok",
+    event.type,
+    label,
+    event.environment ?? null,
+  );
   return { ok: true, id: event.id, type, duplicate: result === "duplicate" };
 }

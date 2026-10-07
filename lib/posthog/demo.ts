@@ -1,9 +1,20 @@
 import { funnelSteps } from "./hogql";
 import type { RoleMap } from "./types";
 
-export const POSTHOG_DEMO_NOTICE = "Demo data — a synthetic PostHog project with three apps. Connect PostHog to see your own events.";
+export const POSTHOG_DEMO_NOTICE =
+  "Demo data — a synthetic PostHog project with three apps. Connect PostHog to see your own events.";
 
-type Ev = { t: number; e: string; d: string; c: string | null; city: string | null; v: string; lib: string; flag?: string; variant?: string };
+type Ev = {
+  t: number;
+  e: string;
+  d: string;
+  c: string | null;
+  city: string | null;
+  v: string;
+  lib: string;
+  flag?: string;
+  variant?: string;
+};
 
 type Names = {
   firstOpen: string;
@@ -28,7 +39,12 @@ type DemoAppConfig = {
   lib: string;
   perDay: number;
   names: Names;
-  experiment: { event: "$feature_flag_called" | "$experiment_exposure"; flag: string; variants: [string, number][]; lever: "purchase" | "onboarding" | "paywall" } | null;
+  experiment: {
+    event: "$feature_flag_called" | "$experiment_exposure";
+    flag: string;
+    variants: [string, number][];
+    lever: "purchase" | "onboarding" | "paywall";
+  } | null;
   versions: [string, number][];
   wheel: boolean;
 };
@@ -55,8 +71,21 @@ export const DEMO_APPS: DemoAppConfig[] = [
       features: ["tappy.counter_reset"],
       lifecycle: true,
     },
-    experiment: { event: "$feature_flag_called", flag: "paywall-copy", variants: [["control", 1], ["test", 1.4]], lever: "purchase" },
-    versions: [["2.3.0", 0], ["2.4.0", 45], ["2.4.1", 70], ["2.5.0", 104]],
+    experiment: {
+      event: "$feature_flag_called",
+      flag: "paywall-copy",
+      variants: [
+        ["control", 1],
+        ["test", 1.4],
+      ],
+      lever: "purchase",
+    },
+    versions: [
+      ["2.3.0", 0],
+      ["2.4.0", 45],
+      ["2.4.1", 70],
+      ["2.5.0", 104],
+    ],
     wheel: true,
   },
   {
@@ -80,8 +109,20 @@ export const DEMO_APPS: DemoAppConfig[] = [
       features: ["scrollworthy.app.backgrounded", "scrollworthy.feed.scrolled"],
       lifecycle: false,
     },
-    experiment: { event: "$experiment_exposure", flag: "onboarding-length", variants: [["control", 1], ["short", 1.18]], lever: "onboarding" },
-    versions: [["1.8.0", 0], ["1.9.0", 60], ["1.9.2", 96]],
+    experiment: {
+      event: "$experiment_exposure",
+      flag: "onboarding-length",
+      variants: [
+        ["control", 1],
+        ["short", 1.18],
+      ],
+      lever: "onboarding",
+    },
+    versions: [
+      ["1.8.0", 0],
+      ["1.9.0", 60],
+      ["1.9.2", 96],
+    ],
     wheel: false,
   },
   {
@@ -105,8 +146,19 @@ export const DEMO_APPS: DemoAppConfig[] = [
       features: ["carlog.vehicle.suggested", "$screen"],
       lifecycle: false,
     },
-    experiment: { event: "$feature_flag_called", flag: "garage-redesign", variants: [["false", 1], ["true", 1.1]], lever: "paywall" },
-    versions: [["3.0.0", 0], ["3.1.0", 82]],
+    experiment: {
+      event: "$feature_flag_called",
+      flag: "garage-redesign",
+      variants: [
+        ["false", 1],
+        ["true", 1.1],
+      ],
+      lever: "paywall",
+    },
+    versions: [
+      ["3.0.0", 0],
+      ["3.1.0", 82],
+    ],
     wheel: false,
   },
 ];
@@ -118,7 +170,11 @@ export function demoApp(slug: string | null | undefined) {
 }
 
 const COUNTRIES: { code: string; weight: number; cities: string[] }[] = [
-  { code: "US", weight: 34, cities: ["New York", "Los Angeles", "Chicago", "Austin", "Seattle"] },
+  {
+    code: "US",
+    weight: 34,
+    cities: ["New York", "Los Angeles", "Chicago", "Austin", "Seattle"],
+  },
   { code: "GB", weight: 9, cities: ["London", "Manchester"] },
   { code: "DE", weight: 8, cities: ["Berlin", "Munich", "Hamburg"] },
   { code: "FR", weight: 7, cities: ["Paris", "Lyon"] },
@@ -160,7 +216,11 @@ function poisson(rand: () => number, lambda: number) {
   return k - 1;
 }
 
-function pickWeighted<T>(rand: () => number, items: T[], weight: (item: T) => number) {
+function pickWeighted<T>(
+  rand: () => number,
+  items: T[],
+  weight: (item: T) => number,
+) {
   const total = items.reduce((a, b) => a + weight(b), 0);
   let x = rand() * total;
   for (const item of items) {
@@ -190,25 +250,50 @@ function buildApp(cfg: DemoAppConfig, seed: number, now: number): Ev[] {
     const base = first + i * DAY;
     const weekday = new Date(base).getUTCDay();
     const trend = 0.75 + 0.5 * (i / DAYS);
-    const count = poisson(rand, cfg.perDay * trend * (weekday === 0 || weekday === 6 ? 1.2 : 1));
+    const count = poisson(
+      rand,
+      cfg.perDay * trend * (weekday === 0 || weekday === 6 ? 1.2 : 1),
+    );
     for (let u = 0; u < count; u++) {
       const t0 = base + Math.floor(rand() * DAY * 0.96);
       if (t0 > now) continue;
       const country = pickWeighted(rand, COUNTRIES, (c) => c.weight);
-      const city = rand() < 0.85 ? country.cities[Math.floor(rand() * country.cities.length)] : null;
+      const city =
+        rand() < 0.85
+          ? country.cities[Math.floor(rand() * country.cities.length)]
+          : null;
       const d = `${cfg.slug.slice(0, 2)}${(seed % 97).toString(16)}${(++seq).toString(36).padStart(5, "0")}-${Math.floor(rand() * 1e8).toString(16)}`;
       let version = versionAt(t0);
       const push = (e: string, t: number, extra?: Partial<Ev>) => {
-        if (t <= now) out.push({ t, e, d, c: country.code, city, v: version, lib: cfg.lib, ...extra });
+        if (t <= now)
+          out.push({
+            t,
+            e,
+            d,
+            c: country.code,
+            city,
+            v: version,
+            lib: cfg.lib,
+            ...extra,
+          });
       };
-      const variant = cfg.experiment ? pickWeighted(rand, cfg.experiment.variants, () => 1) : null;
-      const lift = (lever: string) => (cfg.experiment && variant && cfg.experiment.lever === lever ? variant[1] : 1);
+      const variant = cfg.experiment
+        ? pickWeighted(rand, cfg.experiment.variants, () => 1)
+        : null;
+      const lift = (lever: string) =>
+        cfg.experiment && variant && cfg.experiment.lever === lever
+          ? variant[1]
+          : 1;
       push(n.firstOpen, t0);
       if (n.lifecycle) {
         push("Application Installed", t0 - 400);
         push("Application Opened", t0 - 200);
       }
-      if (cfg.experiment && variant) push(cfg.experiment.event, t0 + 1500, { flag: cfg.experiment.flag, variant: variant[0] });
+      if (cfg.experiment && variant)
+        push(cfg.experiment.event, t0 + 1500, {
+          flag: cfg.experiment.flag,
+          variant: variant[0],
+        });
       let t = t0 + 4000;
       let completed = false;
       if (rand() < 0.86) {
@@ -224,7 +309,8 @@ function buildApp(cfg: DemoAppConfig, seed: number, now: number): Ev[] {
           completed = true;
         }
       }
-      const sawPaywall = rand() < Math.min(0.97, (completed ? 0.84 : 0.22) * lift("paywall"));
+      const sawPaywall =
+        rand() < Math.min(0.97, (completed ? 0.84 : 0.22) * lift("paywall"));
       if (sawPaywall) {
         push(n.paywall, (t += 3000));
         if (rand() < Math.min(0.6, 0.17 * lift("purchase"))) {
@@ -236,7 +322,8 @@ function buildApp(cfg: DemoAppConfig, seed: number, now: number): Ev[] {
               push("tappy.wheel_shown", (t += 2000));
               if (rand() < 0.7) push("tappy.wheel_spun", (t += 3000));
               push("tappy.wheel_offer_viewed", (t += 2000));
-              if (rand() < 0.62) push("tappy.wheel_offer_declined", (t += 6000));
+              if (rand() < 0.62)
+                push("tappy.wheel_offer_declined", (t += 6000));
               else {
                 push(n.pStart, (t += 5000));
                 if (rand() < 0.5) push(n.pDone, (t += 12000));
@@ -249,12 +336,17 @@ function buildApp(cfg: DemoAppConfig, seed: number, now: number): Ev[] {
       for (let k = 1; k <= 60; k++) {
         const at = dayStart(t0) + k * DAY + Math.floor(rand() * DAY * 0.9);
         if (at > now) break;
-        if (rand() >= Math.min(0.9, 0.42 * Math.pow(k, -0.5) * engagement)) continue;
+        if (rand() >= Math.min(0.9, 0.42 * Math.pow(k, -0.5) * engagement))
+          continue;
         if (version !== versionAt(at) && rand() < 0.75) version = versionAt(at);
         if (n.lifecycle) push("Application Opened", at - 100);
         push(n.open, at);
         const actions = 1 + Math.floor(rand() * 3);
-        for (let a = 0; a < actions; a++) push(n.features[Math.floor(rand() * n.features.length)], at + (a + 1) * 20000);
+        for (let a = 0; a < actions; a++)
+          push(
+            n.features[Math.floor(rand() * n.features.length)],
+            at + (a + 1) * 20000,
+          );
         if (rand() < 0.08) push(n.paywall, at + 90000);
       }
     }
@@ -270,7 +362,12 @@ function demoData() {
   const now = Date.now();
   const key = new Date(now).toISOString().slice(0, 13);
   if (g.__openAsoPosthogDemo?.key === key) return g.__openAsoPosthogDemo;
-  const apps = new Map(DEMO_APPS.map((cfg, i) => [cfg.slug, buildApp(cfg, 20261007 + i * 7919, now)]));
+  const apps = new Map(
+    DEMO_APPS.map((cfg, i) => [
+      cfg.slug,
+      buildApp(cfg, 20261007 + i * 7919, now),
+    ]),
+  );
   g.__openAsoPosthogDemo = { key, now, apps };
   return g.__openAsoPosthogDemo;
 }
@@ -279,7 +376,12 @@ function ctx(slug: string, days: number) {
   const data = demoData();
   const events = data.apps.get(demoApp(slug).slug) ?? [];
   const start = dayStart(data.now) - (days - 1) * DAY;
-  return { now: data.now, events, start, inWindow: events.filter((e) => e.t >= start) };
+  return {
+    now: data.now,
+    events,
+    start,
+    inWindow: events.filter((e) => e.t >= start),
+  };
 }
 
 const iso = (t: number) => new Date(t).toISOString();
@@ -308,16 +410,37 @@ export function demoFetchedAt() {
 
 export function demoCatalogRows(slug: string, days = 90) {
   const { inWindow } = ctx(slug, days);
-  return [...group(inWindow, (e) => e.e).entries()].map(([event, list]) => ({ event, total: list.length, users: uniqUsers(list) })).sort((a, b) => b.total - a.total);
+  return [...group(inWindow, (e) => e.e).entries()]
+    .map(([event, list]) => ({
+      event,
+      total: list.length,
+      users: uniqUsers(list),
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
-export function demoOverviewDailyRows(slug: string, roles: RoleMap, days: number) {
+export function demoOverviewDailyRows(
+  slug: string,
+  roles: RoleMap,
+  days: number,
+) {
   const { inWindow } = ctx(slug, days);
   const install = new Set(roles.install);
-  return [...group(inWindow, (e) => isoDay(e.t)).entries()].map(([day, list]) => ({ day, new_users: uniqUsers(list, (e) => install.has(e.e)), dau: uniqUsers(list), total: list.length }));
+  return [...group(inWindow, (e) => isoDay(e.t)).entries()].map(
+    ([day, list]) => ({
+      day,
+      new_users: uniqUsers(list, (e) => install.has(e.e)),
+      dau: uniqUsers(list),
+      total: list.length,
+    }),
+  );
 }
 
-export function demoOverviewTotalsRows(slug: string, roles: RoleMap, days: number) {
+export function demoOverviewTotalsRows(
+  slug: string,
+  roles: RoleMap,
+  days: number,
+) {
   const { inWindow, now } = ctx(slug, days * 2);
   const current = ctx(slug, days).start;
   const install = new Set(roles.install);
@@ -325,7 +448,10 @@ export function demoOverviewTotalsRows(slug: string, roles: RoleMap, days: numbe
   return [
     {
       new_users: uniqUsers(inWindow, (e) => install.has(e.e) && e.t >= current),
-      previous_new_users: uniqUsers(inWindow, (e) => install.has(e.e) && e.t < current),
+      previous_new_users: uniqUsers(
+        inWindow,
+        (e) => install.has(e.e) && e.t < current,
+      ),
       active_users: uniqUsers(inWindow, (e) => e.t >= current),
       wau: uniqUsers(inWindow, (e) => e.t >= weekAgo),
       total: inWindow.filter((e) => e.t >= current).length,
@@ -364,7 +490,13 @@ export function demoFunnelRows(slug: string, roles: RoleMap, days: number) {
       if (list.some((e) => cancelSet.has(e.e) && e.t >= s.t)) cancelled++;
     }
   }
-  return [{ ...Object.fromEntries(counts.map((c, i) => [`s${i}`, c])), purchase_started: started, purchase_cancelled: cancelled }];
+  return [
+    {
+      ...Object.fromEntries(counts.map((c, i) => [`s${i}`, c])),
+      purchase_started: started,
+      purchase_cancelled: cancelled,
+    },
+  ];
 }
 
 function startOfWeekMonday(day: string) {
@@ -373,20 +505,49 @@ function startOfWeekMonday(day: string) {
   return isoDay(t - wd * DAY);
 }
 
-export function demoRetentionRows(slug: string, roles: RoleMap, days: number, weekly: boolean) {
+export function demoRetentionRows(
+  slug: string,
+  roles: RoleMap,
+  days: number,
+  weekly: boolean,
+) {
   const { inWindow, now } = ctx(slug, days);
   const install = new Set(roles.install);
   const open = new Set(roles.open);
   const today = isoDay(now);
-  const add = (day: string, n: number) => isoDay(Date.parse(`${day}T00:00:00Z`) + n * DAY);
-  const cohorts = new Map<string, { users: number; e1: number; r1: number; e7: number; r7: number; e30: number; r30: number }>();
+  const add = (day: string, n: number) =>
+    isoDay(Date.parse(`${day}T00:00:00Z`) + n * DAY);
+  const cohorts = new Map<
+    string,
+    {
+      users: number;
+      e1: number;
+      r1: number;
+      e7: number;
+      r7: number;
+      e30: number;
+      r30: number;
+    }
+  >();
   for (const list of group(inWindow, (e) => e.d).values()) {
     const first = list.find((e) => install.has(e.e));
     if (!first) continue;
     const d0 = isoDay(first.t);
-    const active = new Set(list.filter((e) => (open.size ? open.has(e.e) : true)).map((e) => isoDay(e.t)));
+    const active = new Set(
+      list
+        .filter((e) => (open.size ? open.has(e.e) : true))
+        .map((e) => isoDay(e.t)),
+    );
     const key = weekly ? startOfWeekMonday(d0) : d0;
-    const row = cohorts.get(key) ?? { users: 0, e1: 0, r1: 0, e7: 0, r7: 0, e30: 0, r30: 0 };
+    const row = cohorts.get(key) ?? {
+      users: 0,
+      e1: 0,
+      r1: 0,
+      e7: 0,
+      r7: 0,
+      e30: 0,
+      r30: 0,
+    };
     row.users++;
     for (const n of [1, 7, 30] as const) {
       const target = add(d0, n);
@@ -395,26 +556,43 @@ export function demoRetentionRows(slug: string, roles: RoleMap, days: number, we
     }
     cohorts.set(key, row);
   }
-  return [...cohorts.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([cohort, r]) => ({ cohort, ...r }));
+  return [...cohorts.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([cohort, r]) => ({ cohort, ...r }));
 }
 
 export function demoCountriesRows(slug: string, roles: RoleMap, days: number) {
   const { inWindow } = ctx(slug, days);
   const install = new Set(roles.install);
   return [...group(inWindow, (e) => e.c ?? "").entries()]
-    .map(([country, list]) => ({ country, new_users: uniqUsers(list, (e) => install.has(e.e)), active_users: uniqUsers(list) }))
-    .sort((a, b) => b.new_users - a.new_users || b.active_users - a.active_users);
+    .map(([country, list]) => ({
+      country,
+      new_users: uniqUsers(list, (e) => install.has(e.e)),
+      active_users: uniqUsers(list),
+    }))
+    .sort(
+      (a, b) => b.new_users - a.new_users || b.active_users - a.active_users,
+    );
 }
 
 export function demoCitiesRows(slug: string, roles: RoleMap, days: number) {
   const { inWindow } = ctx(slug, days);
   const install = new Set(roles.install);
-  return [...group(
-    inWindow.filter((e) => e.city),
-    (e) => `${e.city}|${e.c ?? ""}`,
-  ).entries()]
-    .map(([key, list]) => ({ city: key.split("|")[0], country: key.split("|")[1], new_users: uniqUsers(list, (e) => install.has(e.e)), active_users: uniqUsers(list) }))
-    .sort((a, b) => b.new_users - a.new_users || b.active_users - a.active_users)
+  return [
+    ...group(
+      inWindow.filter((e) => e.city),
+      (e) => `${e.city}|${e.c ?? ""}`,
+    ).entries(),
+  ]
+    .map(([key, list]) => ({
+      city: key.split("|")[0],
+      country: key.split("|")[1],
+      new_users: uniqUsers(list, (e) => install.has(e.e)),
+      active_users: uniqUsers(list),
+    }))
+    .sort(
+      (a, b) => b.new_users - a.new_users || b.active_users - a.active_users,
+    )
     .slice(0, 25);
 }
 
@@ -431,20 +609,42 @@ export function demoVersionsRows(slug: string, roles: RoleMap, days: number) {
   }));
 }
 
-export function demoExperimentsRows(slug: string, roles: RoleMap, days: number) {
+export function demoExperimentsRows(
+  slug: string,
+  roles: RoleMap,
+  days: number,
+) {
   const { inWindow } = ctx(slug, days);
   const paywall = new Set(roles.paywall_view);
   const purchase = new Set(roles.purchase_success);
-  const rows = new Map<string, { flag: string; variant: string; users: number; paywall_users: number; purchase_users: number }>();
+  const rows = new Map<
+    string,
+    {
+      flag: string;
+      variant: string;
+      users: number;
+      paywall_users: number;
+      purchase_users: number;
+    }
+  >();
   for (const list of group(inWindow, (e) => e.d).values()) {
     const exposures = new Map<string, Ev>();
-    for (const e of list) if (e.flag && !exposures.has(e.flag)) exposures.set(e.flag, e);
+    for (const e of list)
+      if (e.flag && !exposures.has(e.flag)) exposures.set(e.flag, e);
     for (const [flag, ex] of exposures) {
       const key = `${flag}|${ex.variant ?? ""}`;
-      const row = rows.get(key) ?? { flag, variant: ex.variant ?? "", users: 0, paywall_users: 0, purchase_users: 0 };
+      const row = rows.get(key) ?? {
+        flag,
+        variant: ex.variant ?? "",
+        users: 0,
+        paywall_users: 0,
+        purchase_users: 0,
+      };
       row.users++;
-      if (list.some((e) => paywall.has(e.e) && e.t >= ex.t)) row.paywall_users++;
-      if (list.some((e) => purchase.has(e.e) && e.t >= ex.t)) row.purchase_users++;
+      if (list.some((e) => paywall.has(e.e) && e.t >= ex.t))
+        row.paywall_users++;
+      if (list.some((e) => purchase.has(e.e) && e.t >= ex.t))
+        row.purchase_users++;
       rows.set(key, row);
     }
   }
@@ -457,12 +657,28 @@ export function demoLiveRows(slug: string) {
   return events
     .slice(-100)
     .reverse()
-    .map((e) => ({ timestamp: iso(e.t), event: e.e, distinct_id: e.d, lib: cfg.lib, country: e.c, version: e.v }));
+    .map((e) => ({
+      timestamp: iso(e.t),
+      event: e.e,
+      distinct_id: e.d,
+      lib: cfg.lib,
+      country: e.c,
+      version: e.v,
+    }));
 }
 
-export function demoNewUsersRows(slug: string, roles: RoleMap, days: number, country: string | null) {
+export function demoNewUsersRows(
+  slug: string,
+  roles: RoleMap,
+  days: number,
+  country: string | null,
+) {
   const { inWindow } = ctx(slug, days);
   const install = new Set(roles.install);
-  const filtered = inWindow.filter((e) => install.has(e.e) && (!country || e.c === country.toUpperCase()));
-  return [...group(filtered, (e) => isoDay(e.t)).entries()].map(([day, list]) => ({ day, new_users: uniqUsers(list) }));
+  const filtered = inWindow.filter(
+    (e) => install.has(e.e) && (!country || e.c === country.toUpperCase()),
+  );
+  return [...group(filtered, (e) => isoDay(e.t)).entries()].map(
+    ([day, list]) => ({ day, new_users: uniqUsers(list) }),
+  );
 }

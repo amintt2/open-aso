@@ -3,26 +3,55 @@ import { z } from "zod";
 import { HttpError } from "@/lib/server/http";
 import { getSetting } from "@/lib/server/settings";
 import { logIntegrationEvent } from "./log";
-import { safeEqual } from "./secrets";
-import { appIdFromRef, candidateUser, isoFromMs, normalizeCountry, saveRevenueEvent, type RevenueType } from "./revenue";
-import { soleOwnedAppId } from "./revenuecat";
+import { safeEqual } from "@/lib/server/crypto";
+import {
+  appIdFromRef,
+  candidateUser,
+  isoFromMs,
+  normalizeCountry,
+  saveRevenueEvent,
+  soleOwnedAppId,
+  type RevenueType,
+} from "./revenue";
 
 const TOLERANCE_SECONDS = 5 * 60;
-const PURCHASE_TYPES = new Set<RevenueType>(["initial_purchase", "trial_started", "renewal", "trial_converted", "non_renewing_purchase"]);
+const PURCHASE_TYPES = new Set<RevenueType>([
+  "initial_purchase",
+  "trial_started",
+  "renewal",
+  "trial_converted",
+  "non_renewing_purchase",
+]);
 
-export function verifySvixSignature(headers: Headers, body: string, secret: string, now = Date.now()) {
+export function verifySvixSignature(
+  headers: Headers,
+  body: string,
+  secret: string,
+  now = Date.now(),
+) {
   const id = headers.get("svix-id") ?? headers.get("webhook-id");
-  const timestamp = headers.get("svix-timestamp") ?? headers.get("webhook-timestamp");
-  const signatures = headers.get("svix-signature") ?? headers.get("webhook-signature");
-  if (!id || !timestamp || !signatures) throw new HttpError(401, "Missing webhook signature headers");
+  const timestamp =
+    headers.get("svix-timestamp") ?? headers.get("webhook-timestamp");
+  const signatures =
+    headers.get("svix-signature") ?? headers.get("webhook-signature");
+  if (!id || !timestamp || !signatures)
+    throw new HttpError(401, "Missing webhook signature headers");
   const ts = Number(timestamp);
-  if (!Number.isFinite(ts) || Math.abs(now / 1000 - ts) > TOLERANCE_SECONDS) throw new HttpError(401, "Webhook timestamp outside tolerance");
-  const key = Buffer.from(secret.startsWith("whsec_") ? secret.slice(6) : secret, "base64");
-  const expected = createHmac("sha256", key).update(`${id}.${timestamp}.${body}`).digest("base64");
+  if (!Number.isFinite(ts) || Math.abs(now / 1000 - ts) > TOLERANCE_SECONDS)
+    throw new HttpError(401, "Webhook timestamp outside tolerance");
+  const key = Buffer.from(
+    secret.startsWith("whsec_") ? secret.slice(6) : secret,
+    "base64",
+  );
+  const expected = createHmac("sha256", key)
+    .update(`${id}.${timestamp}.${body}`)
+    .digest("base64");
   const valid = signatures
     .split(" ")
     .map((part) => part.split(","))
-    .some(([version, sig]) => version === "v1" && !!sig && safeEqual(sig, expected));
+    .some(
+      ([version, sig]) => version === "v1" && !!sig && safeEqual(sig, expected),
+    );
   if (!valid) throw new HttpError(401, "Invalid webhook signature");
   return id;
 }
@@ -51,12 +80,21 @@ const swData = z
   .passthrough();
 
 export const superwallWebhook = z
-  .object({ object: z.string().optional(), type: z.string().min(1), timestamp: z.number().optional(), data: swData })
+  .object({
+    object: z.string().optional(),
+    type: z.string().min(1),
+    timestamp: z.number().optional(),
+    data: swData,
+  })
   .passthrough();
 
 type SwData = z.infer<typeof swData>;
 
-export function mapSuperwallType(type: string, data: SwData, amount: number): RevenueType {
+export function mapSuperwallType(
+  type: string,
+  data: SwData,
+  amount: number,
+): RevenueType {
   const t = type.toLowerCase();
   const trial = (data.periodType ?? "").toUpperCase() === "TRIAL";
   if (t === "test") return "test";
@@ -71,7 +109,9 @@ export function mapSuperwallType(type: string, data: SwData, amount: number): Re
     case "product_change":
       return "product_change";
     case "cancellation":
-      return (data.cancelReason ?? "").toUpperCase() === "CUSTOMER_SUPPORT" ? "refund" : "cancellation";
+      return (data.cancelReason ?? "").toUpperCase() === "CUSTOMER_SUPPORT"
+        ? "refund"
+        : "cancellation";
     case "uncancellation":
       return "uncancellation";
     case "expiration":
@@ -93,13 +133,38 @@ function attr(data: SwData, ...keys: string[]) {
   return null;
 }
 
-export function handleSuperwall(headers: Headers, rawBody: string) {
-  const secret = getSetting("integrations.superwall.secret");
-  if (!secret) throw new HttpError(503, "Superwall signing secret is not configured in Open ASO");
+const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+export async function superwallSecret(workspaceId: string | null | undefined) {
+  if (!workspaceId || !WORKSPACE_ID.test(workspaceId)) return null;
+  return (
+    (await getSetting(workspaceId, "integrations.superwall.secret")) ?? null
+  );
+}
+
+export async function handleSuperwall(
+  workspaceId: string | null,
+  headers: Headers,
+  rawBody: string,
+) {
+  if (!workspaceId)
+    throw new HttpError(
+      400,
+      "Add ?w=<workspace id> to the webhook URL (copy it from the Integrations page)",
+    );
+  const secret = await superwallSecret(workspaceId);
+  if (!secret)
+    throw new HttpError(401, "Superwall is not configured for this workspace");
   try {
     verifySvixSignature(headers, rawBody, secret);
   } catch (error) {
-    logIntegrationEvent("superwall", "error", null, error instanceof Error ? error.message : "Signature verification failed");
+    await logIntegrationEvent(
+      workspaceId,
+      "superwall",
+      "error",
+      null,
+      error instanceof Error ? error.message : "Signature verification failed",
+    );
     throw error;
   }
   const json = (() => {
@@ -111,33 +176,68 @@ export function handleSuperwall(headers: Headers, rawBody: string) {
   })();
   const parsed = superwallWebhook.safeParse(json);
   if (!parsed.success) {
-    logIntegrationEvent("superwall", "error", null, "Malformed webhook payload");
+    await logIntegrationEvent(
+      workspaceId,
+      "superwall",
+      "error",
+      null,
+      "Malformed webhook payload",
+    );
     throw new HttpError(400, "Malformed Superwall webhook payload");
   }
   const { type, data, timestamp } = parsed.data;
-  const amount = typeof data.price === "number" ? data.price : (data.currencyCode ?? "").toUpperCase() === "USD" && typeof data.priceInPurchasedCurrency === "number" ? data.priceInPurchasedCurrency : 0;
+  const amount =
+    typeof data.price === "number"
+      ? data.price
+      : (data.currencyCode ?? "").toUpperCase() === "USD" &&
+          typeof data.priceInPurchasedCurrency === "number"
+        ? data.priceInPurchasedCurrency
+        : 0;
   const mapped = mapSuperwallType(type, data, amount);
-  const user = candidateUser([attr(data, "openAsoId", "$openAsoId"), data.appUserId, data.originalAppUserId, ...(data.aliases ?? [])]);
-  const appId = appIdFromRef(data.bundleId) ?? user.appId ?? soleOwnedAppId();
-  const result = saveRevenueEvent({
+  const user = await candidateUser(workspaceId, [
+    attr(data, "openAsoId", "$openAsoId"),
+    data.appUserId,
+    data.originalAppUserId,
+    ...(data.aliases ?? []),
+  ]);
+  const appId =
+    (await appIdFromRef(workspaceId, data.bundleId)) ??
+    user.appId ??
+    (await soleOwnedAppId(workspaceId));
+  const result = await saveRevenueEvent(workspaceId, {
     id: `sw_${data.id}`,
     provider: "superwall",
     appId,
     userId: user.userId,
     type: mapped,
     productId: data.newProductId ?? data.productId ?? null,
-    amountUsd: mapped === "trial_started" || mapped === "test" || mapped === "cancellation" ? 0 : amount,
+    amountUsd:
+      mapped === "trial_started" ||
+      mapped === "test" ||
+      mapped === "cancellation"
+        ? 0
+        : amount,
     country: normalizeCountry(data.countryCode),
-    occurredAt: isoFromMs(PURCHASE_TYPES.has(mapped) ? (data.purchasedAt ?? timestamp) : (timestamp ?? data.purchasedAt)),
+    occurredAt: isoFromMs(
+      PURCHASE_TYPES.has(mapped)
+        ? (data.purchasedAt ?? timestamp)
+        : (timestamp ?? data.purchasedAt),
+    ),
     environment: data.environment ?? null,
     raw: parsed.data,
   });
-  logIntegrationEvent(
+  await logIntegrationEvent(
+    workspaceId,
     "superwall",
     result === "duplicate" ? "duplicate" : "ok",
     type,
     `${type}${amount ? ` · $${amount.toFixed(2)}` : ""}${user.userId ? ` · ${user.userId}` : ""}`,
     data.environment ?? null,
   );
-  return { ok: true, id: data.id, type: mapped, duplicate: result === "duplicate" };
+  return {
+    ok: true,
+    id: data.id,
+    type: mapped,
+    duplicate: result === "duplicate",
+  };
 }

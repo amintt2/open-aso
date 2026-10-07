@@ -2,25 +2,52 @@
 
 import { FlaskConical } from "lucide-react";
 import EmptyState from "@/components/shell/empty-state";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/_ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/_ui/table";
 import { Panel } from "@/components/analytics/chart-kit";
 import { formatCompact, formatPercent } from "@/lib/client/format";
-import type { ExperimentRow, PosthogExperimentsResult } from "@/lib/posthog/types";
+import type {
+  ExperimentRow,
+  PosthogExperimentsResult,
+} from "@/lib/posthog/types";
 import { cn } from "@/lib/utils";
 import { MissingRoles, scopeLabel } from "./product-parts";
 import { usePosthogView, type ProductTarget } from "./use-posthog";
 import ViewFrame from "./view-frame";
 
 function Lift({ value, base }: { value: number | null; base: number | null }) {
-  if (value == null || base == null || base === 0) return <span className="text-subtle">—</span>;
+  if (value == null || base == null || base === 0)
+    return <span className="text-subtle">—</span>;
   const lift = value / base - 1;
-  return <span className={cn("tabular-nums", Math.abs(lift) < 0.005 ? "text-subtle" : lift > 0 ? "text-trend" : "text-danger")}>{`${lift > 0 ? "+" : ""}${(lift * 100).toFixed(1)}%`}</span>;
+  return (
+    <span
+      className={cn(
+        "tabular-nums",
+        Math.abs(lift) < 0.005
+          ? "text-subtle"
+          : lift > 0
+            ? "text-trend"
+            : "text-danger",
+      )}
+    >{`${lift > 0 ? "+" : ""}${(lift * 100).toFixed(1)}%`}</span>
+  );
 }
 
 function ExperimentTable({ experiment }: { experiment: ExperimentRow }) {
-  const base = experiment.variants.find((v) => v.variant === "control") ?? experiment.variants[0];
+  const base =
+    experiment.variants.find((v) => v.variant === "control") ??
+    experiment.variants[0];
   return (
-    <Panel title={<span className="font-mono">{experiment.flag}</span>} description={`${formatCompact(experiment.users)} exposed people · lift is relative to ${base?.variant ?? "the first variant"}`}>
+    <Panel
+      title={<span className="font-mono">{experiment.flag}</span>}
+      description={`${formatCompact(experiment.users)} exposed people · lift is relative to ${base?.variant ?? "the first variant"}`}
+    >
       <div className="-mx-4 overflow-x-auto">
         <Table>
           <TableHeader>
@@ -37,15 +64,41 @@ function ExperimentTable({ experiment }: { experiment: ExperimentRow }) {
             {experiment.variants.map((v) => (
               <TableRow key={v.variant}>
                 <TableCell className="pl-4 font-mono">{v.variant}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatCompact(v.users)}</TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {formatPercent(v.paywallRate)} <span className="text-subtle">· {formatCompact(v.paywallUsers)}</span>
+                  {formatCompact(v.users)}
                 </TableCell>
-                <TableCell className="text-right">{v === base ? <span className="text-subtle">base</span> : <Lift value={v.paywallRate} base={base?.paywallRate ?? null} />}</TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {formatPercent(v.purchaseRate)} <span className="text-subtle">· {formatCompact(v.purchaseUsers)}</span>
+                  {formatPercent(v.paywallRate)}{" "}
+                  <span className="text-subtle">
+                    · {formatCompact(v.paywallUsers)}
+                  </span>
                 </TableCell>
-                <TableCell className="pr-4 text-right">{v === base ? <span className="text-subtle">base</span> : <Lift value={v.purchaseRate} base={base?.purchaseRate ?? null} />}</TableCell>
+                <TableCell className="text-right">
+                  {v === base ? (
+                    <span className="text-subtle">base</span>
+                  ) : (
+                    <Lift
+                      value={v.paywallRate}
+                      base={base?.paywallRate ?? null}
+                    />
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatPercent(v.purchaseRate)}{" "}
+                  <span className="text-subtle">
+                    · {formatCompact(v.purchaseUsers)}
+                  </span>
+                </TableCell>
+                <TableCell className="pr-4 text-right">
+                  {v === base ? (
+                    <span className="text-subtle">base</span>
+                  ) : (
+                    <Lift
+                      value={v.purchaseRate}
+                      base={base?.purchaseRate ?? null}
+                    />
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -55,13 +108,29 @@ function ExperimentTable({ experiment }: { experiment: ExperimentRow }) {
   );
 }
 
-export default function ProductExperiments({ target, onConnect }: { target: ProductTarget; onConnect: () => void }) {
+export default function ProductExperiments({
+  target,
+  onConnect,
+}: {
+  target: ProductTarget;
+  onConnect: () => void;
+}) {
   const view = usePosthogView<PosthogExperimentsResult>("experiments", target);
   return (
-    <ViewFrame {...view} onConnect={onConnect} caption={(d) => `${scopeLabel(d)} · $feature_flag_called and $experiment_exposure`}>
+    <ViewFrame
+      {...view}
+      onConnect={onConnect}
+      caption={(d) =>
+        `${scopeLabel(d)} · $feature_flag_called and $experiment_exposure`
+      }
+    >
       {(data) => (
         <>
-          <MissingRoles roles={(["paywall_view", "purchase_success"] as const).filter((r) => !data.roles[r].length)} />
+          <MissingRoles
+            roles={(["paywall_view", "purchase_success"] as const).filter(
+              (r) => !data.roles[r].length,
+            )}
+          />
           {data.experiments.length ? (
             <div className="grid gap-4 xl:grid-cols-2">
               {data.experiments.map((e) => (
@@ -69,9 +138,17 @@ export default function ProductExperiments({ target, onConnect }: { target: Prod
               ))}
             </div>
           ) : (
-            <EmptyState icon={FlaskConical} title="No flag exposures" description="Nothing called a feature flag or sent $experiment_exposure for this app in the period." />
+            <EmptyState
+              icon={FlaskConical}
+              title="No flag exposures"
+              description="Nothing called a feature flag or sent $experiment_exposure for this app in the period."
+            />
           )}
-          <p className="caption-style text-subtle">Rates count people who viewed a paywall or purchased after their first exposure. Small samples are noisy — check significance in PostHog Experiments before shipping a winner.</p>
+          <p className="caption-style text-subtle">
+            Rates count people who viewed a paywall or purchased after their
+            first exposure. Small samples are noisy — check significance in
+            PostHog Experiments before shipping a winner.
+          </p>
         </>
       )}
     </ViewFrame>

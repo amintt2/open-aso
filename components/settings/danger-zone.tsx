@@ -5,14 +5,20 @@ import { useRouter } from "next/navigation";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/_ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/_ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/_ui/dialog";
 import { Input } from "@/components/_ui/input";
 import { api, revalidate } from "@/lib/client/api";
 import SettingsCard from "./settings-card";
 
 const PHRASE = "DELETE ALL DATA";
 
-export default function DangerZone() {
+export default function DangerZone({ canManage }: { canManage: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -21,8 +27,11 @@ export default function DangerZone() {
   async function wipe() {
     setBusy(true);
     try {
-      await api("/api/integrations/wipe", { method: "POST", body: { confirm: typed } });
-      toast.success("All data deleted");
+      await api("/api/integrations/wipe", {
+        method: "POST",
+        body: { confirm: typed },
+      });
+      toast.success("Workspace data deleted");
       setOpen(false);
       await revalidate("/api/");
       router.push("/");
@@ -35,11 +44,27 @@ export default function DangerZone() {
   }
 
   return (
-    <SettingsCard id="danger" tone="danger" title="Danger zone" description="Permanently delete every app, keyword, history snapshot, competitor, install, revenue event, credential and setting in this database. Export first if you might need it.">
-      <Button variant="secondary" size="md" className="text-danger self-start" onClick={() => setOpen(true)}>
+    <SettingsCard
+      id="danger"
+      tone="danger"
+      title="Danger zone"
+      description="Permanently delete every app, keyword, history snapshot, competitor, install, revenue event, integration token, credential and setting in this workspace. Members, the plan and other workspaces are kept. Export first if you might need it."
+    >
+      <Button
+        variant="secondary"
+        size="md"
+        className="text-danger self-start"
+        disabled={!canManage}
+        onClick={() => setOpen(true)}
+      >
         <Trash2 aria-hidden className="size-3.5" />
-        Delete all data
+        Delete workspace data
       </Button>
+      {!canManage && (
+        <p className="caption-style text-subtle">
+          Only workspace owners and admins can do this.
+        </p>
+      )}
       <Dialog
         open={open}
         onOpenChange={(o) => {
@@ -56,16 +81,39 @@ export default function DangerZone() {
             }}
           >
             <div className="flex flex-col gap-4 px-6 pt-6 pr-12 pb-6">
-              <DialogTitle>Delete all data?</DialogTitle>
-              <DialogDescription className="p-style text-subtle">This cannot be undone. Type {PHRASE} to confirm.</DialogDescription>
-              <Input autoFocus autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={PHRASE} aria-label="Confirmation phrase" />
+              <DialogTitle>Delete this workspace&apos;s data?</DialogTitle>
+              <DialogDescription className="p-style text-subtle">
+                This cannot be undone. Type {PHRASE} to confirm.
+              </DialogDescription>
+              <Input
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                placeholder={PHRASE}
+                aria-label="Confirmation phrase"
+              />
             </div>
             <DialogFooter>
-              <Button variant="ghost" size="md" onClick={() => setOpen(false)} disabled={busy}>
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => setOpen(false)}
+                disabled={busy}
+              >
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="md" className="bg-[#b42318] hover:bg-[#c8331f]" disabled={busy || typed !== PHRASE}>
-                {busy && <Loader2 aria-hidden className="size-3.5 animate-spin" />}
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                className="bg-[#b42318] hover:bg-[#c8331f]"
+                disabled={busy || typed !== PHRASE}
+              >
+                {busy && (
+                  <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                )}
                 Delete everything
               </Button>
             </DialogFooter>
