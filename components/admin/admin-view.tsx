@@ -23,6 +23,7 @@ import {
 } from "@/components/_ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/_ui/tabs";
 import PlatformKeyCard from "@/components/apple-ads/platform-key-card";
+import FetchNetworkCard from "@/components/worker/fetch-network-card";
 import Tag from "@/components/_ui/tag";
 import { api, useApi } from "@/lib/client/api";
 import type { AdminOverview, AdminWorkspace } from "@/lib/workspace/types";
@@ -169,6 +170,7 @@ export default function AdminView() {
         {tab === "platform" && (
           <div className="mx-auto flex w-full max-w-[960px] flex-col gap-4 p-4">
             <PlatformKeyCard />
+            <FetchNetworkCard />
           </div>
         )}
         {data && tab === "workspaces" && (

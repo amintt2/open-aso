@@ -4,6 +4,7 @@ import PageHeader from "@/components/shell/page-header";
 import { ScrollArea } from "@/components/_ui/scroll-area";
 import { useApi } from "@/lib/client/api";
 import AiSettings, { type PublicSettings } from "./ai-settings";
+import BrowserFetching from "./browser-fetching";
 import DataSettings from "./data-settings";
 import DangerZone from "./danger-zone";
 import {
@@ -16,6 +17,7 @@ const SECTIONS = [
   { id: "plan", label: "Plan & usage" },
   { id: "ai", label: "AI" },
   { id: "scheduler", label: "Keyword refresh" },
+  { id: "browser-fetching", label: "Browser fetching" },
   { id: "data", label: "Data" },
   { id: "danger", label: "Danger zone" },
 ];
@@ -49,6 +51,7 @@ export default function SettingsView() {
             onChange={(next) => mutate(next, { revalidate: false })}
           />
           <SchedulerSettings info={info} />
+          <BrowserFetching />
           <DataSettings canManage={canManage} onChanged={() => refreshInfo()} />
           <DangerZone canManage={canManage} />
         </div>

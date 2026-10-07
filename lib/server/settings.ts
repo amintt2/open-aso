@@ -21,7 +21,8 @@ export type SettingKey =
   | "mcp.allowWrites"
   | "posthog.host"
   | "posthog.projectId"
-  | "posthog.apiKey";
+  | "posthog.apiKey"
+  | "worker.shared";
 
 export const SECRET_KEYS: SettingKey[] = [
   "asc.privateKey",

@@ -2,6 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { appStoreFetch, egressStats } from "./egress";
 import { cached, DAY, HOUR } from "@/lib/server/cache";
 import { getCountry } from "./countries";
+import { fetchViaWorker } from "@/lib/worker/route";
 
 export type StoreApp = {
   trackId: number;
@@ -44,6 +45,10 @@ export type Review = {
 };
 
 async function fetchWithRetry(url: string, init?: { headers?: Record<string, string> }): Promise<Response> {
+  if (!init) {
+    const viaWorker = await fetchViaWorker(url);
+    if (viaWorker) return viaWorker;
+  }
   return appStoreFetch(url, init);
 }
 

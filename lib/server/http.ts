@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError, type ZodType } from "zod";
+import { runRequest } from "./request-context";
 
 export class HttpError extends Error {
   constructor(
@@ -19,7 +20,7 @@ export function route<Ctx = unknown>(
 ) {
   return async (req: Request, ctx: Ctx) => {
     try {
-      return await handler(req, ctx);
+      return await runRequest(() => handler(req, ctx));
     } catch (error) {
       if (error instanceof HttpError)
         return NextResponse.json({ error: error.message }, { status: error.status });

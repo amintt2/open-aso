@@ -5,6 +5,7 @@ import { db } from "@/lib/server/db";
 import { pendingInvitesFor } from "@/lib/workspace/service";
 import Sidebar from "@/components/shell/sidebar";
 import AddAppDialog from "@/components/shell/add-app-dialog";
+import FetchWorker from "@/components/worker/fetch-worker";
 
 export default async function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -19,6 +20,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
       <Sidebar />
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</section>
       <AddAppDialog />
+      <FetchWorker />
       <Toaster theme="dark" position="bottom-right" toastOptions={{ className: "!bg-popover !border-line-strong !text-foreground" }} />
     </main>
   );

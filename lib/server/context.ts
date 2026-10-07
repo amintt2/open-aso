@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { auth, isAdminEmail } from "@/lib/auth";
 import { db } from "./db";
 import { HttpError } from "./http";
+import { bindWorkspace } from "./request-context";
 
 export type WorkspaceRole = "owner" | "admin" | "member";
 
@@ -38,6 +39,7 @@ export async function requireWorkspace(minRole: WorkspaceRole = "member"): Promi
   }
   const rank: Record<WorkspaceRole, number> = { member: 0, admin: 1, owner: 2 };
   if (rank[member.role] < rank[minRole]) throw new HttpError(403, "You don't have permission to do this in this workspace");
+  bindWorkspace(member.organizationId);
   return {
     userId: session.user.id,
     email: session.user.email,

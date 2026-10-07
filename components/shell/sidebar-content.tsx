@@ -16,6 +16,7 @@ import AppIcon from "./app-icon";
 import NavLink from "./nav-link";
 import UserMenu from "./user-menu";
 import WorkspaceSwitcher from "./workspace-switcher";
+import WorkerStatus from "@/components/worker/worker-status";
 import { APP_NAV, GLOBAL_NAV } from "@/lib/client/nav";
 import { useApi } from "@/lib/client/api";
 import type { TrackedApp } from "@/lib/client/types";
@@ -147,6 +148,7 @@ export default function SidebarContent() {
       </ScrollArea>
 
       <div className="border-sidebar-border bg-sidebar-accent shrink-0 border-t p-2">
+        <WorkerStatus onNavigate={close} />
         <UserMenu me={me} onNavigate={close} />
       </div>
     </div>
