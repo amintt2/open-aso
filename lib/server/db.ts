@@ -11,9 +11,7 @@ type GlobalWithPool = typeof globalThis & { __openAsoPool?: Pool; __openAsoReady
 export function pool(): Pool {
   const g = globalThis as GlobalWithPool;
   if (g.__openAsoPool) return g.__openAsoPool;
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is not set");
-  g.__openAsoPool = new Pool({ connectionString, max: Number(process.env.OPEN_ASO_DB_POOL ?? 10) });
+  g.__openAsoPool = new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.OPEN_ASO_DB_POOL ?? 10) });
   return g.__openAsoPool;
 }
 
