@@ -8,6 +8,7 @@ import {
   ascGetAll,
   ascPost,
   ASC_TTL,
+  ascCacheKey,
   clearAscCache,
   indexIncluded,
   query,
@@ -48,17 +49,18 @@ function num(value: unknown) {
 type SubAttrs = { name?: string; productId?: string; state?: string; subscriptionPeriod?: string; groupLevel?: number };
 type IapAttrs = { name?: string; productId?: string; state?: string; inAppPurchaseType?: string };
 
-export async function listProducts(appId: number, opts: { refresh?: boolean } = {}): Promise<AscProduct[]> {
-  const ascAppId = await resolveAscAppId(appId);
-  if (opts.refresh) clearAscCache(`${appKey(ascAppId)}products`);
-  return cached(`${appKey(ascAppId)}products`, ASC_TTL, async () => {
+export async function listProducts(workspaceId: string, appId: number, opts: { refresh?: boolean } = {}): Promise<AscProduct[]> {
+  const ascAppId = await resolveAscAppId(workspaceId, appId);
+  if (opts.refresh) await clearAscCache(workspaceId, `${appKey(ascAppId)}products`);
+  return cached(ascCacheKey(workspaceId, `${appKey(ascAppId)}products`), ASC_TTL, async () => {
     const [groups, iaps] = await Promise.all([
-      ascGetAll<{ referenceName?: string }>(`/v1/apps/${ascAppId}/subscriptionGroups${query({ limit: 200, "fields[subscriptionGroups]": "referenceName" })}`),
-      ascGetAll<IapAttrs>(`/v1/apps/${ascAppId}/inAppPurchasesV2${query({ limit: 200, "fields[inAppPurchases]": "name,productId,inAppPurchaseType,state" })}`),
+      ascGetAll<{ referenceName?: string }>(workspaceId, `/v1/apps/${ascAppId}/subscriptionGroups${query({ limit: 200, "fields[subscriptionGroups]": "referenceName" })}`),
+      ascGetAll<IapAttrs>(workspaceId, `/v1/apps/${ascAppId}/inAppPurchasesV2${query({ limit: 200, "fields[inAppPurchases]": "name,productId,inAppPurchaseType,state" })}`),
     ]);
     const subs = await Promise.all(
       groups.data.map(async (g) => {
         const doc = await ascGetAll<SubAttrs>(
+          workspaceId,
           `/v1/subscriptionGroups/${g.id}/subscriptions${query({ limit: 200, "fields[subscriptions]": "name,productId,state,subscriptionPeriod,groupLevel" })}`,
         );
         return doc.data
@@ -139,8 +141,9 @@ function splitTimeline(entries: TerritoryPrice[]) {
   };
 }
 
-async function loadSubscriptionPrices(subscriptionId: string): Promise<ProductPrices> {
+async function loadSubscriptionPrices(workspaceId: string, subscriptionId: string): Promise<ProductPrices> {
   const doc = await ascGetAll<PriceAttrs>(
+    workspaceId,
     `/v1/subscriptions/${subscriptionId}/prices${query({
       include: "subscriptionPricePoint,territory",
       limit: 200,
@@ -155,9 +158,9 @@ async function loadSubscriptionPrices(subscriptionId: string): Promise<ProductPr
   return { kind: "subscription", productId: subscriptionId, baseTerritory: null, ...splitTimeline(entries), fetchedAt: new Date().toISOString() };
 }
 
-async function iapSchedule(iapId: string) {
+async function iapSchedule(workspaceId: string, iapId: string) {
   try {
-    const doc = await ascFetch<AscSingle>(`/v2/inAppPurchases/${iapId}/iapPriceSchedule${query({ include: "baseTerritory" })}`);
+    const doc = await ascFetch<AscSingle>(workspaceId, `/v2/inAppPurchases/${iapId}/iapPriceSchedule${query({ include: "baseTerritory" })}`);
     return { id: doc.data.id, baseTerritory: relId(doc.data, "baseTerritory") };
   } catch (error) {
     if (error instanceof AscError && error.appleStatus === 404) return null;
@@ -165,8 +168,8 @@ async function iapSchedule(iapId: string) {
   }
 }
 
-async function loadIapPrices(iapId: string): Promise<ProductPrices> {
-  const schedule = await iapSchedule(iapId);
+async function loadIapPrices(workspaceId: string, iapId: string): Promise<ProductPrices> {
+  const schedule = await iapSchedule(workspaceId, iapId);
   if (!schedule) return { kind: "iap", productId: iapId, baseTerritory: null, current: [], upcoming: [], fetchedAt: new Date().toISOString() };
   const params = query({
     include: "inAppPurchasePricePoint,territory",
@@ -177,8 +180,8 @@ async function loadIapPrices(iapId: string): Promise<ProductPrices> {
     "fields[territories]": "currency",
   });
   const [manual, automatic] = await Promise.all([
-    ascGetAll<PriceAttrs>(`/v1/inAppPurchasePriceSchedules/${schedule.id}/manualPrices${params}`),
-    ascGetAll<PriceAttrs>(`/v1/inAppPurchasePriceSchedules/${schedule.id}/automaticPrices${params}`),
+    ascGetAll<PriceAttrs>(workspaceId, `/v1/inAppPurchasePriceSchedules/${schedule.id}/manualPrices${params}`),
+    ascGetAll<PriceAttrs>(workspaceId, `/v1/inAppPurchasePriceSchedules/${schedule.id}/automaticPrices${params}`),
   ]);
   const findM = indexIncluded(manual.included);
   const findA = indexIncluded(automatic.included);
@@ -189,10 +192,12 @@ async function loadIapPrices(iapId: string): Promise<ProductPrices> {
   return { kind: "iap", productId: iapId, baseTerritory: schedule.baseTerritory, ...splitTimeline(entries), fetchedAt: new Date().toISOString() };
 }
 
-export async function getProductPrices(appId: number, kind: ProductKind, productId: string, opts: { refresh?: boolean } = {}): Promise<ProductPrices> {
-  await resolveAscAppId(appId);
-  if (opts.refresh) clearAscCache(priceKey(kind, productId));
-  return cached(priceKey(kind, productId), ASC_TTL, () => (kind === "subscription" ? loadSubscriptionPrices(productId) : loadIapPrices(productId)));
+export async function getProductPrices(workspaceId: string, appId: number, kind: ProductKind, productId: string, opts: { refresh?: boolean } = {}): Promise<ProductPrices> {
+  await resolveAscAppId(workspaceId, appId);
+  if (opts.refresh) await clearAscCache(workspaceId, priceKey(kind, productId));
+  return cached(ascCacheKey(workspaceId, priceKey(kind, productId)), ASC_TTL, () =>
+    kind === "subscription" ? loadSubscriptionPrices(workspaceId, productId) : loadIapPrices(workspaceId, productId),
+  );
 }
 
 export type PricePoint = { id: string; territory: string; currency: string | null; customerPrice: number; proceeds: number | null };
@@ -214,11 +219,14 @@ function mapPoints(doc: AscDocument<PointAttrs>): PricePoint[] {
     .filter((p) => p.territory);
 }
 
-async function pricePoints(kind: ProductKind, productId: string, territories: string[]): Promise<Map<string, PricePoint[]>> {
+const pointsKey = (workspaceId: string, kind: ProductKind, productId: string, territory: string) => ascCacheKey(workspaceId, `asc:pp:${kind}:${productId}:${territory}`);
+
+async function pricePoints(workspaceId: string, kind: ProductKind, productId: string, territories: string[]): Promise<Map<string, PricePoint[]>> {
   const out = new Map<string, PricePoint[]>();
   const missing: string[] = [];
-  for (const t of territories) {
-    const hit = cacheGet<PricePoint[]>(`asc:pp:${kind}:${productId}:${t}`);
+  const hits = await Promise.all(territories.map((t) => cacheGet<PricePoint[]>(pointsKey(workspaceId, kind, productId, t))));
+  for (const [i, t] of territories.entries()) {
+    const hit = hits[i];
     if (hit) out.set(t, hit);
     else missing.push(t);
   }
@@ -228,24 +236,26 @@ async function pricePoints(kind: ProductKind, productId: string, territories: st
     const base = kind === "subscription" ? `/v1/subscriptions/${productId}/pricePoints` : `/v2/inAppPurchases/${productId}/pricePoints`;
     const fieldKey = kind === "subscription" ? "fields[subscriptionPricePoints]" : "fields[inAppPurchasePricePoints]";
     const doc = await ascGetAll<PointAttrs>(
+      workspaceId,
       `${base}${query({ "filter[territory]": chunk.join(","), include: "territory", limit: 8000, [fieldKey]: "customerPrice,proceeds,territory", "fields[territories]": "currency" })}`,
     );
     const grouped = new Map<string, PricePoint[]>(chunk.map((t) => [t, []]));
     for (const p of mapPoints(doc)) grouped.get(p.territory)?.push(p);
     for (const [t, list] of grouped) {
       const sorted = list.filter((p) => p.customerPrice > 0).sort((a, b) => a.customerPrice - b.customerPrice);
-      cacheSet(`asc:pp:${kind}:${productId}:${t}`, sorted, 12 * HOUR);
+      await cacheSet(pointsKey(workspaceId, kind, productId, t), sorted, 12 * HOUR);
       out.set(t, sorted);
     }
   }
   return out;
 }
 
-function equalizations(kind: ProductKind, pricePointId: string): Promise<PricePoint[]> {
-  return cached(`asc:eq:${kind}:${pricePointId}`, 12 * HOUR, async () => {
+function equalizations(workspaceId: string, kind: ProductKind, pricePointId: string): Promise<PricePoint[]> {
+  return cached(ascCacheKey(workspaceId, `asc:eq:${kind}:${pricePointId}`), 12 * HOUR, async () => {
     const base = kind === "subscription" ? `/v1/subscriptionPricePoints/${pricePointId}/equalizations` : `/v1/inAppPurchasePricePoints/${pricePointId}/equalizations`;
     const fieldKey = kind === "subscription" ? "fields[subscriptionPricePoints]" : "fields[inAppPurchasePricePoints]";
     const doc = await ascGetAll<PointAttrs>(
+      workspaceId,
       `${base}${query({ "filter[territory]": TERRITORY_FILTER, include: "territory", limit: 8000, [fieldKey]: "customerPrice,proceeds,territory", "fields[territories]": "currency" })}`,
     );
     return mapPoints(doc);
@@ -258,26 +268,27 @@ function nearest(points: PricePoint[], target: number) {
   return best;
 }
 
-export async function getPricePoints(appId: number, kind: ProductKind, productId: string, territory: string) {
-  await resolveAscAppId(appId);
-  return (await pricePoints(kind, productId, [territory])).get(territory) ?? [];
+export async function getPricePoints(workspaceId: string, appId: number, kind: ProductKind, productId: string, territory: string) {
+  await resolveAscAppId(workspaceId, appId);
+  return (await pricePoints(workspaceId, kind, productId, [territory])).get(territory) ?? [];
 }
 
 export async function buildPricingPlan(
+  workspaceId: string,
   appId: number,
   input: { kind: ProductKind; productId: string; baseUsd: number; strategy: PricingStrategy; clampMin?: number; clampMax?: number },
 ): Promise<PricingPlan> {
-  await resolveAscAppId(appId);
+  await resolveAscAppId(workspaceId, appId);
   const { kind, productId, baseUsd, strategy } = input;
   const clampMin = input.clampMin ?? PPP_DEFAULT_CLAMP.min;
   const clampMax = input.clampMax ?? PPP_DEFAULT_CLAMP.max;
-  const usPoints = (await pricePoints(kind, productId, ["USA"])).get("USA") ?? [];
+  const usPoints = (await pricePoints(workspaceId, kind, productId, ["USA"])).get("USA") ?? [];
   const basePoint = nearest(usPoints, baseUsd);
   if (!basePoint) throw new HttpError(422, "Apple returned no United States price points for this product");
-  const [eq, prices] = await Promise.all([equalizations(kind, basePoint.id), getProductPrices(appId, kind, productId)]);
+  const [eq, prices] = await Promise.all([equalizations(workspaceId, kind, basePoint.id), getProductPrices(workspaceId, appId, kind, productId)]);
   const eqBy = new Map(eq.map((p) => [p.territory, p]));
   eqBy.set("USA", basePoint);
-  const points = strategy === "ppp" ? await pricePoints(kind, productId, STOREFRONT_TERRITORIES) : new Map<string, PricePoint[]>();
+  const points = strategy === "ppp" ? await pricePoints(workspaceId, kind, productId, STOREFRONT_TERRITORIES) : new Map<string, PricePoint[]>();
   const currentBy = new Map(prices.current.map((p) => [p.territory, p]));
 
   const rows = STOREFRONT_TERRITORIES.map<PlanRow>((territory) => {
@@ -313,13 +324,14 @@ export async function buildPricingPlan(
 }
 
 export async function scheduleSubscriptionPrices(
+  workspaceId: string,
   appId: number,
   subscriptionId: string,
   rows: ScheduleRow[],
   opts: { startDate: string | null; preserveCurrentPrice: boolean },
 ): Promise<ScheduleResult[]> {
-  await resolveAscAppId(appId);
-  const prices = await getProductPrices(appId, "subscription", subscriptionId, { refresh: true });
+  await resolveAscAppId(workspaceId, appId);
+  const prices = await getProductPrices(workspaceId, appId, "subscription", subscriptionId, { refresh: true });
   const startDate = opts.startDate && opts.startDate > today() ? opts.startDate : null;
   const results: ScheduleResult[] = [];
   for (const row of rows) {
@@ -330,7 +342,7 @@ export async function scheduleSubscriptionPrices(
       continue;
     }
     try {
-      await ascPost("/v1/subscriptionPrices", {
+      await ascPost(workspaceId, "/v1/subscriptionPrices", {
         data: {
           type: "subscriptionPrices",
           attributes: { ...(startDate ? { startDate } : {}), preserveCurrentPrice: opts.preserveCurrentPrice && row.increase },
@@ -346,13 +358,13 @@ export async function scheduleSubscriptionPrices(
       results.push({ territory: row.territory, ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
-  clearAscCache(priceKey("subscription", subscriptionId));
+  await clearAscCache(workspaceId, priceKey("subscription", subscriptionId));
   return results;
 }
 
 type IapEntry = { territory: string; pricePointId: string; startDate: string | null; endDate: string | null };
 
-async function postIapSchedule(iapId: string, baseTerritory: string, entries: IapEntry[]) {
+async function postIapSchedule(workspaceId: string, iapId: string, baseTerritory: string, entries: IapEntry[]) {
   if (!entries.some((e) => e.territory === baseTerritory && !e.startDate))
     throw new HttpError(422, `The base territory ${baseTerritory} needs a current manual price`);
   const included = entries.map((e, i) => ({
@@ -364,7 +376,7 @@ async function postIapSchedule(iapId: string, baseTerritory: string, entries: Ia
       inAppPurchasePricePoint: { data: { type: "inAppPurchasePricePoints", id: e.pricePointId } },
     },
   }));
-  await ascPost("/v1/inAppPurchasePriceSchedules", {
+  await ascPost(workspaceId, "/v1/inAppPurchasePriceSchedules", {
     data: {
       type: "inAppPurchasePriceSchedules",
       relationships: {
@@ -389,9 +401,15 @@ function existingManualEntries(prices: ProductPrices): IapEntry[] {
     }));
 }
 
-export async function scheduleIapPrices(appId: number, iapId: string, rows: ScheduleRow[], opts: { startDate: string | null }): Promise<ScheduleResult[]> {
-  await resolveAscAppId(appId);
-  const prices = await getProductPrices(appId, "iap", iapId, { refresh: true });
+export async function scheduleIapPrices(
+  workspaceId: string,
+  appId: number,
+  iapId: string,
+  rows: ScheduleRow[],
+  opts: { startDate: string | null },
+): Promise<ScheduleResult[]> {
+  await resolveAscAppId(workspaceId, appId);
+  const prices = await getProductPrices(workspaceId, appId, "iap", iapId, { refresh: true });
   const baseTerritory = prices.baseTerritory ?? "USA";
   const startDate = opts.startDate && opts.startDate > today() ? opts.startDate : null;
   let entries = existingManualEntries(prices);
@@ -419,27 +437,27 @@ export async function scheduleIapPrices(appId: number, iapId: string, rows: Sche
     entries = [...others, ...kept, { territory: row.territory, pricePointId: row.pricePointId, startDate, endDate: null }];
   }
   try {
-    await postIapSchedule(iapId, baseTerritory, entries);
+    await postIapSchedule(workspaceId, iapId, baseTerritory, entries);
     results.push(...changes.map((c) => ({ territory: c.territory, ok: true })));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     results.push(...changes.map((c) => ({ territory: c.territory, ok: false, error: message })));
   } finally {
-    clearAscCache(priceKey("iap", iapId));
+    await clearAscCache(workspaceId, priceKey("iap", iapId));
   }
   return results;
 }
 
-export async function cancelUpcoming(appId: number, kind: ProductKind, productId: string, priceIds: string[]) {
-  await resolveAscAppId(appId);
-  const prices = await getProductPrices(appId, kind, productId, { refresh: true });
+export async function cancelUpcoming(workspaceId: string, appId: number, kind: ProductKind, productId: string, priceIds: string[]) {
+  await resolveAscAppId(workspaceId, appId);
+  const prices = await getProductPrices(workspaceId, appId, kind, productId, { refresh: true });
   const targets = prices.upcoming.filter((u) => u.priceId && priceIds.includes(u.priceId));
   if (!targets.length) throw new HttpError(404, "No matching upcoming price changes");
   const results: ScheduleResult[] = [];
   if (kind === "subscription") {
     for (const t of targets) {
       try {
-        await ascDelete(`/v1/subscriptionPrices/${t.priceId}`);
+        await ascDelete(workspaceId, `/v1/subscriptionPrices/${t.priceId}`);
         results.push({ territory: t.territory, ok: true });
       } catch (error) {
         results.push({ territory: t.territory, ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -455,13 +473,13 @@ export async function cancelUpcoming(appId: number, kind: ProductKind, productId
       return { ...e, endDate: nextStart || null };
     });
     try {
-      await postIapSchedule(productId, prices.baseTerritory ?? "USA", entries);
+      await postIapSchedule(workspaceId, productId, prices.baseTerritory ?? "USA", entries);
       results.push(...targets.map((t) => ({ territory: t.territory, ok: true })));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       results.push(...targets.map((t) => ({ territory: t.territory, ok: false, error: message })));
     }
   }
-  clearAscCache(priceKey(kind, productId));
+  await clearAscCache(workspaceId, priceKey(kind, productId));
   return results;
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { updateMetadata } from "@/lib/asc/metadata";
 import { METADATA_LIMITS } from "@/lib/asc/types";
+import { requireWorkspace } from "@/lib/server/context";
 import { body, idParam, json, route } from "@/lib/server/http";
 
 type Ctx = { params: Promise<{ id: string; locale: string }> };
@@ -22,8 +23,9 @@ const schema = z.object({
 });
 
 export const PATCH = route<Ctx>(async (req, { params }) => {
+  const { workspaceId } = await requireWorkspace("admin");
   const id = await idParam(params);
   const { locale } = await params;
   const patch = await body(req, schema);
-  return json(await updateMetadata(id, decodeURIComponent(locale), patch));
+  return json(await updateMetadata(workspaceId, id, decodeURIComponent(locale), patch));
 });

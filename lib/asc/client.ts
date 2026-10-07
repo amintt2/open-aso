@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { importPKCS8, SignJWT } from "jose";
+import { wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
 import { HttpError } from "@/lib/server/http";
 import { getSetting } from "@/lib/server/settings";
@@ -42,16 +44,18 @@ export class AscError extends HttpError {
   }
 }
 
-export function ascCredentials(): AscCredentials | null {
-  const issuerId = getSetting("asc.issuerId");
-  const keyId = getSetting("asc.keyId");
-  const privateKey = getSetting("asc.privateKey");
+export async function ascCredentials(workspaceId: string): Promise<AscCredentials | null> {
+  const [issuerId, keyId, privateKey] = await Promise.all([
+    getSetting(workspaceId, "asc.issuerId"),
+    getSetting(workspaceId, "asc.keyId"),
+    getSetting(workspaceId, "asc.privateKey"),
+  ]);
   if (!issuerId || !keyId || !privateKey) return null;
   return { issuerId, keyId, privateKey };
 }
 
-export function isAscConfigured() {
-  return ascCredentials() !== null;
+export async function isAscConfigured(workspaceId: string) {
+  return (await ascCredentials(workspaceId)) !== null;
 }
 
 export function normalizePrivateKey(raw: string) {
@@ -63,8 +67,17 @@ export function normalizePrivateKey(raw: string) {
 
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
-export async function ascToken(creds: AscCredentials) {
-  const cacheKey = `${creds.issuerId}:${creds.keyId}:${creds.privateKey.length}`;
+function tokenKey(workspaceId: string, creds: AscCredentials) {
+  const fingerprint = createHash("sha256").update(`${creds.issuerId}\n${creds.keyId}\n${creds.privateKey}`).digest("hex");
+  return `${workspaceId}:${fingerprint}`;
+}
+
+export function forgetAscTokens(workspaceId: string) {
+  for (const k of tokenCache.keys()) if (k.startsWith(`${workspaceId}:`)) tokenCache.delete(k);
+}
+
+export async function ascToken(workspaceId: string, creds: AscCredentials) {
+  const cacheKey = tokenKey(workspaceId, creds);
   const hit = tokenCache.get(cacheKey);
   if (hit && hit.expiresAt - Date.now() > 2 * 60 * 1000) return hit.token;
   let key: CryptoKey;
@@ -106,13 +119,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type AscRequest = { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown; creds?: AscCredentials; attempts?: number };
 
-export async function ascFetch<T>(path: string, { method = "GET", body, creds, attempts = 4 }: AscRequest = {}): Promise<T> {
-  const credentials = creds ?? ascCredentials();
+export async function ascFetch<T>(workspaceId: string, path: string, { method = "GET", body, creds, attempts = 4 }: AscRequest = {}): Promise<T> {
+  const credentials = creds ?? (await ascCredentials(workspaceId));
   if (!credentials) throw new HttpError(412, "App Store Connect is not connected");
   const url = path.startsWith("http") ? path : `${ASC_BASE}${path}`;
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const token = await ascToken(credentials);
+    const token = await ascToken(workspaceId, credentials);
     let res: Response;
     try {
       res = await fetch(url, {
@@ -133,7 +146,12 @@ export async function ascFetch<T>(path: string, { method = "GET", body, creds, a
     }
     if (res.status === 204) return undefined as T;
     const text = await res.text();
-    const parsed = text ? (JSON.parse(text) as unknown) : undefined;
+    let parsed: unknown;
+    try {
+      parsed = text ? (JSON.parse(text) as unknown) : undefined;
+    } catch {
+      parsed = undefined;
+    }
     if (res.ok) return parsed as T;
     const errors = ((parsed as { errors?: AscErrorItem[] } | undefined)?.errors ?? []) as AscErrorItem[];
     const error = new AscError(res.status, describeErrors(res.status, errors), errors);
@@ -146,20 +164,20 @@ export async function ascFetch<T>(path: string, { method = "GET", body, creds, a
   throw new HttpError(502, "App Store Connect request failed");
 }
 
-export function ascGet<T = Record<string, unknown>>(path: string, creds?: AscCredentials) {
-  return ascFetch<AscDocument<T>>(path, { creds });
+export function ascGet<T = Record<string, unknown>>(workspaceId: string, path: string, creds?: AscCredentials) {
+  return ascFetch<AscDocument<T>>(workspaceId, path, { creds });
 }
 
-export function ascGetOne<T = Record<string, unknown>>(path: string, creds?: AscCredentials) {
-  return ascFetch<AscSingle<T>>(path, { creds });
+export function ascGetOne<T = Record<string, unknown>>(workspaceId: string, path: string, creds?: AscCredentials) {
+  return ascFetch<AscSingle<T>>(workspaceId, path, { creds });
 }
 
-export async function ascGetAll<T = Record<string, unknown>>(path: string, maxPages = 50): Promise<AscDocument<T>> {
+export async function ascGetAll<T = Record<string, unknown>>(workspaceId: string, path: string, maxPages = 50): Promise<AscDocument<T>> {
   const data: AscResource<T>[] = [];
   const included = new Map<string, AscResource>();
   let next: string | undefined = path;
   for (let page = 0; next && page < maxPages; page++) {
-    const doc: AscDocument<T> = await ascFetch<AscDocument<T>>(next);
+    const doc: AscDocument<T> = await ascFetch<AscDocument<T>>(workspaceId, next);
     data.push(...doc.data);
     for (const item of doc.included ?? []) included.set(`${item.type}:${item.id}`, item);
     next = doc.links?.next;
@@ -167,16 +185,16 @@ export async function ascGetAll<T = Record<string, unknown>>(path: string, maxPa
   return { data, included: [...included.values()] };
 }
 
-export function ascPost<T = AscSingle>(path: string, body: unknown) {
-  return ascFetch<T>(path, { method: "POST", body, attempts: 3 });
+export function ascPost<T = AscSingle>(workspaceId: string, path: string, body: unknown) {
+  return ascFetch<T>(workspaceId, path, { method: "POST", body, attempts: 3 });
 }
 
-export function ascPatch<T = AscSingle>(path: string, body: unknown) {
-  return ascFetch<T>(path, { method: "PATCH", body, attempts: 3 });
+export function ascPatch<T = AscSingle>(workspaceId: string, path: string, body: unknown) {
+  return ascFetch<T>(workspaceId, path, { method: "PATCH", body, attempts: 3 });
 }
 
-export function ascDelete(path: string) {
-  return ascFetch<void>(path, { method: "DELETE", attempts: 3 });
+export function ascDelete(workspaceId: string, path: string) {
+  return ascFetch<void>(workspaceId, path, { method: "DELETE", attempts: 3 });
 }
 
 export function relId(resource: AscResource, name: string): string | null {
@@ -204,15 +222,20 @@ export function query(params: Record<string, string | number | undefined | null>
   return parts.length ? `?${parts.join("&")}` : "";
 }
 
-export function clearAscCache(prefix: string) {
-  db().prepare("DELETE FROM cache WHERE key LIKE ? ESCAPE '\\'").run(`${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+export function ascCacheKey(workspaceId: string, key: string) {
+  return wsKey(workspaceId, key);
+}
+
+export async function clearAscCache(workspaceId: string, prefix = "asc:") {
+  const full = wsKey(workspaceId, prefix);
+  await db.run("DELETE FROM cache WHERE key LIKE ?", [`${full.replace(/[\\%_]/g, (c) => `\\${c}`)}%`]);
 }
 
 export const ASC_TTL = 5 * 60 * 1000;
 
 export type AscAppSummary = { id: string; name: string; bundleId: string; sku: string; primaryLocale: string };
 
-export async function testAscConnection(creds?: AscCredentials) {
-  const doc = await ascFetch<AscDocument<{ name: string; bundleId: string }>>("/v1/apps?limit=1&fields[apps]=name,bundleId", { creds, attempts: 2 });
+export async function testAscConnection(workspaceId: string, creds?: AscCredentials) {
+  const doc = await ascFetch<AscDocument<{ name: string; bundleId: string }>>(workspaceId, "/v1/apps?limit=1&fields[apps]=name,bundleId", { creds, attempts: 2 });
   return { ok: true as const, sampleApp: doc.data[0]?.attributes?.name ?? null };
 }

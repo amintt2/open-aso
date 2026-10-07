@@ -102,7 +102,7 @@ function SetupForm({ initialIssuer, initialKey, hasKey, onDone }: { initialIssue
       </SheetHeader>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
         <SheetDescription className="p-style text-soft leading-[1.45]">
-          Create a team API key in App Store Connect → Users and Access → Integrations → App Store Connect API with the App Manager role. The key stays on this machine and is only sent to Apple.
+          Create a team API key in App Store Connect → Users and Access → Integrations → App Store Connect API with the App Manager role. Credentials are stored encrypted for this workspace only and are only ever sent to Apple. Only workspace owners and admins can change them.
         </SheetDescription>
         <a href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "link", size: "none" }), "w-fit text-[13px]")}>
           Open API keys in App Store Connect
@@ -153,7 +153,7 @@ function SetupForm({ initialIssuer, initialKey, hasKey, onDone }: { initialIssue
           <div className="border-border mt-auto flex flex-col gap-3 border-t pt-5">
             {confirmDisconnect ? (
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-soft flex-1">Remove the saved credentials from this machine?</p>
+                <p className="text-soft flex-1">Remove the saved credentials from this workspace?</p>
                 <Button variant="ghost" size="sm" onClick={() => setConfirmDisconnect(false)}>
                   Cancel
                 </Button>

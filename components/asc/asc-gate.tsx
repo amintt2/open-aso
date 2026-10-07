@@ -232,7 +232,7 @@ export function AscGateFallback({
     <EmptyState
       icon={PlugZap}
       title="Connect App Store Connect"
-      description={`Add an App Store Connect API key to ${feature}. Credentials stay on this machine.`}
+      description={`Add an App Store Connect API key to ${feature}. Credentials are stored encrypted for this workspace only.`}
       action={
         <Button variant="primary" size="md" onClick={onSetup}>
           Connect App Store Connect

@@ -8,6 +8,7 @@ import {
   ascPatch,
   ascPost,
   ASC_TTL,
+  ascCacheKey,
   clearAscCache,
   indexIncluded,
   query,
@@ -38,6 +39,7 @@ type VersionAttrs = { platform?: string; versionString?: string; appStoreState?:
 type AppAttrs = { name?: string; bundleId?: string; primaryLocale?: string };
 
 const key = (ascAppId: string) => `asc:app:${ascAppId}:`;
+const cacheKey = (workspaceId: string, ascAppId: string, suffix: string) => ascCacheKey(workspaceId, `${key(ascAppId)}${suffix}`);
 
 function toVersion(r: AscResource<VersionAttrs>): AscVersionSummary {
   const state = r.attributes?.appVersionState ?? r.attributes?.appStoreState ?? "UNKNOWN";
@@ -82,11 +84,11 @@ function emptyLocale(locale: string): LocaleMetadata {
   };
 }
 
-async function loadMetadata(ascAppId: string): Promise<AppMetadata> {
+async function loadMetadata(workspaceId: string, ascAppId: string): Promise<AppMetadata> {
   const [app, infos, versions] = await Promise.all([
-    ascGetOne<AppAttrs>(`/v1/apps/${ascAppId}${query({ "fields[apps]": "name,bundleId,primaryLocale" })}`),
-    ascGetAll<AppInfoAttrs>(`/v1/apps/${ascAppId}/appInfos${query({ limit: 50 })}`),
-    ascGetAll<VersionAttrs>(`/v1/apps/${ascAppId}/appStoreVersions${query({ limit: 50 })}`, 4),
+    ascGetOne<AppAttrs>(workspaceId, `/v1/apps/${ascAppId}${query({ "fields[apps]": "name,bundleId,primaryLocale" })}`),
+    ascGetAll<AppInfoAttrs>(workspaceId, `/v1/apps/${ascAppId}/appInfos${query({ limit: 50 })}`),
+    ascGetAll<VersionAttrs>(workspaceId, `/v1/apps/${ascAppId}/appStoreVersions${query({ limit: 50 })}`, 4),
   ]);
   const infoList = infos.data.map(toInfo);
   const appInfo = infoList.find((i) => i.editable) ?? infoList.find((i) => LIVE_STATES.has(i.state)) ?? infoList[0] ?? null;
@@ -94,9 +96,9 @@ async function loadMetadata(ascAppId: string): Promise<AppMetadata> {
   const version = picked.editable ?? picked.live ?? picked.latest;
 
   const [infoLocs, versionLocs] = await Promise.all([
-    appInfo ? ascGetAll<Record<InfoField | "locale", string | null>>(`/v1/appInfos/${appInfo.id}/appInfoLocalizations${query({ limit: 200 })}`) : null,
+    appInfo ? ascGetAll<Record<InfoField | "locale", string | null>>(workspaceId, `/v1/appInfos/${appInfo.id}/appInfoLocalizations${query({ limit: 200 })}`) : null,
     version
-      ? ascGetAll<Record<VersionField | "locale", string | null>>(`/v1/appStoreVersions/${version.id}/appStoreVersionLocalizations${query({ limit: 200 })}`)
+      ? ascGetAll<Record<VersionField | "locale", string | null>>(workspaceId, `/v1/appStoreVersions/${version.id}/appStoreVersionLocalizations${query({ limit: 200 })}`)
       : null,
   ]);
 
@@ -136,14 +138,14 @@ async function loadMetadata(ascAppId: string): Promise<AppMetadata> {
   };
 }
 
-export async function getAppMetadata(appId: number, opts: { refresh?: boolean } = {}): Promise<AppMetadata> {
-  const ascAppId = await resolveAscAppId(appId);
-  if (opts.refresh) clearAscCache(key(ascAppId));
-  return cached(`${key(ascAppId)}metadata`, ASC_TTL, () => loadMetadata(ascAppId));
+export async function getAppMetadata(workspaceId: string, appId: number, opts: { refresh?: boolean } = {}): Promise<AppMetadata> {
+  const ascAppId = await resolveAscAppId(workspaceId, appId);
+  if (opts.refresh) await clearAscCache(workspaceId, key(ascAppId));
+  return cached(cacheKey(workspaceId, ascAppId, "metadata"), ASC_TTL, () => loadMetadata(workspaceId, ascAppId));
 }
 
-export async function listLocalizations(appId: number) {
-  const meta = await getAppMetadata(appId);
+export async function listLocalizations(workspaceId: string, appId: number) {
+  const meta = await getAppMetadata(workspaceId, appId);
   return meta.localizations.map((l) => ({
     locale: l.locale,
     primary: sameLocale(l.locale, meta.primaryLocale),
@@ -155,8 +157,8 @@ export async function listLocalizations(appId: number) {
   }));
 }
 
-export async function getMetadata(appId: number, locale?: string) {
-  const meta = await getAppMetadata(appId);
+export async function getMetadata(workspaceId: string, appId: number, locale?: string) {
+  const meta = await getAppMetadata(workspaceId, appId);
   if (!locale) return meta;
   const loc = meta.localizations.find((l) => sameLocale(l.locale, locale));
   if (!loc) throw new HttpError(404, `Locale ${locale} does not exist for this app`);
@@ -179,9 +181,9 @@ function pick<F extends string>(patch: MetadataPatch, fields: readonly F[]) {
   return out;
 }
 
-export async function updateMetadata(appId: number, locale: string, patch: MetadataPatch): Promise<LocaleMetadata> {
+export async function updateMetadata(workspaceId: string, appId: number, locale: string, patch: MetadataPatch): Promise<LocaleMetadata> {
   validatePatch(patch);
-  const meta = await getAppMetadata(appId, { refresh: true });
+  const meta = await getAppMetadata(workspaceId, appId, { refresh: true });
   const loc = meta.localizations.find((l) => sameLocale(l.locale, locale)) ?? emptyLocale(locale);
   const info = pick(patch, INFO_FIELDS);
   const ver = pick(patch, VERSION_FIELDS);
@@ -191,12 +193,12 @@ export async function updateMetadata(appId: number, locale: string, patch: Metad
     if (!meta.appInfo.editable)
       throw new HttpError(409, "Name, subtitle and privacy URLs can only be changed while a new version is being prepared. Create a new version in App Store Connect first.");
     if (loc.appInfoLocalizationId) {
-      await ascPatch(`/v1/appInfoLocalizations/${loc.appInfoLocalizationId}`, {
+      await ascPatch(workspaceId, `/v1/appInfoLocalizations/${loc.appInfoLocalizationId}`, {
         data: { type: "appInfoLocalizations", id: loc.appInfoLocalizationId, attributes: info },
       });
     } else {
       if (!info.name) throw new HttpError(422, "A name is required to create this localization");
-      await ascPost("/v1/appInfoLocalizations", {
+      await ascPost(workspaceId, "/v1/appInfoLocalizations", {
         data: {
           type: "appInfoLocalizations",
           attributes: { locale: loc.locale, ...info },
@@ -212,11 +214,11 @@ export async function updateMetadata(appId: number, locale: string, patch: Metad
     if (!meta.version.editable && !onlyPromo)
       throw new HttpError(409, `Version ${meta.version.versionString} is ${meta.version.state.replaceAll("_", " ").toLowerCase()} and can't be edited. Create a new version in App Store Connect first (promotional text can still be changed).`);
     if (loc.versionLocalizationId) {
-      await ascPatch(`/v1/appStoreVersionLocalizations/${loc.versionLocalizationId}`, {
+      await ascPatch(workspaceId, `/v1/appStoreVersionLocalizations/${loc.versionLocalizationId}`, {
         data: { type: "appStoreVersionLocalizations", id: loc.versionLocalizationId, attributes: ver },
       });
     } else {
-      await ascPost("/v1/appStoreVersionLocalizations", {
+      await ascPost(workspaceId, "/v1/appStoreVersionLocalizations", {
         data: {
           type: "appStoreVersionLocalizations",
           attributes: { locale: loc.locale, ...ver },
@@ -226,12 +228,12 @@ export async function updateMetadata(appId: number, locale: string, patch: Metad
     }
   }
 
-  const fresh = await getAppMetadata(appId, { refresh: true });
+  const fresh = await getAppMetadata(workspaceId, appId, { refresh: true });
   return fresh.localizations.find((l) => sameLocale(l.locale, locale)) ?? emptyLocale(locale);
 }
 
-export async function addLocalization(appId: number, locale: string, init: MetadataPatch = {}) {
-  const meta = await getAppMetadata(appId, { refresh: true });
+export async function addLocalization(workspaceId: string, appId: number, locale: string, init: MetadataPatch = {}) {
+  const meta = await getAppMetadata(workspaceId, appId, { refresh: true });
   if (meta.localizations.some((l) => sameLocale(l.locale, locale) && l.appInfoLocalizationId && l.versionLocalizationId))
     throw new HttpError(409, `${locale} already exists`);
   if (!meta.appInfo?.editable && !meta.version?.editable)
@@ -241,25 +243,25 @@ export async function addLocalization(appId: number, locale: string, init: Metad
   const patch: MetadataPatch = { ...init };
   if (meta.appInfo?.editable && !existing?.appInfoLocalizationId) patch.name = init.name || primary?.name || meta.appName;
   if (meta.version?.editable && !existing?.versionLocalizationId && patch.description === undefined) patch.description = init.description ?? "";
-  return updateMetadata(appId, locale, patch);
+  return updateMetadata(workspaceId, appId, locale, patch);
 }
 
-export async function deleteLocalization(appId: number, locale: string) {
-  const meta = await getAppMetadata(appId, { refresh: true });
+export async function deleteLocalization(workspaceId: string, appId: number, locale: string) {
+  const meta = await getAppMetadata(workspaceId, appId, { refresh: true });
   if (sameLocale(locale, meta.primaryLocale)) throw new HttpError(409, "The primary locale can't be deleted");
   const loc = meta.localizations.find((l) => sameLocale(l.locale, locale));
   if (!loc) throw new HttpError(404, `Locale ${locale} does not exist`);
   const removed: string[] = [];
   if (loc.versionLocalizationId && meta.version?.editable) {
-    await ascDelete(`/v1/appStoreVersionLocalizations/${loc.versionLocalizationId}`);
+    await ascDelete(workspaceId, `/v1/appStoreVersionLocalizations/${loc.versionLocalizationId}`);
     removed.push("version");
   }
   if (loc.appInfoLocalizationId && meta.appInfo?.editable) {
-    await ascDelete(`/v1/appInfoLocalizations/${loc.appInfoLocalizationId}`);
+    await ascDelete(workspaceId, `/v1/appInfoLocalizations/${loc.appInfoLocalizationId}`);
     removed.push("appInfo");
   }
   if (!removed.length) throw new HttpError(409, "Nothing editable to delete. Create a new version in App Store Connect first.");
-  clearAscCache(key(meta.ascAppId));
+  await clearAscCache(workspaceId, key(meta.ascAppId));
   return { removed };
 }
 
@@ -273,13 +275,14 @@ function screenshotUrl(a: ScreenshotAttrs | undefined) {
   return asset.templateUrl.replace("{w}", String(width)).replace("{h}", String(height)).replace("{f}", "png");
 }
 
-export async function getScreenshots(appId: number, locale: string, opts: { refresh?: boolean } = {}): Promise<ScreenshotSet[]> {
-  const meta = await getAppMetadata(appId, opts);
+export async function getScreenshots(workspaceId: string, appId: number, locale: string, opts: { refresh?: boolean } = {}): Promise<ScreenshotSet[]> {
+  const meta = await getAppMetadata(workspaceId, appId, opts);
   const loc = meta.localizations.find((l) => sameLocale(l.locale, locale));
   if (!loc?.versionLocalizationId) return [];
   const id = loc.versionLocalizationId;
-  return cached(`${key(meta.ascAppId)}screens:${id}`, ASC_TTL, async () => {
+  return cached(cacheKey(workspaceId, meta.ascAppId, `screens:${id}`), ASC_TTL, async () => {
     const doc = await ascGetAll<{ screenshotDisplayType?: string }>(
+      workspaceId,
       `/v1/appStoreVersionLocalizations/${id}/appScreenshotSets${query({ include: "appScreenshots", limit: 50 })}`,
     );
     const find = indexIncluded(doc.included);

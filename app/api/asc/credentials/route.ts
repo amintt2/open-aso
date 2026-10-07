@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { clearAscCredentials, getAscStatus, saveAscCredentials } from "@/lib/asc/status";
+import { requireWorkspace } from "@/lib/server/context";
 import { body, json, route } from "@/lib/server/http";
 
 const schema = z.object({
@@ -10,13 +11,15 @@ const schema = z.object({
 });
 
 export const PUT = route(async (req) => {
+  const { workspaceId } = await requireWorkspace("admin");
   const input = await body(req, schema);
-  const result = await saveAscCredentials(input, { dryRun: input.dryRun });
+  const result = await saveAscCredentials(workspaceId, input, { dryRun: input.dryRun });
   if (input.dryRun) return json(result);
-  return json({ ...result, status: await getAscStatus({ refresh: true }) });
+  return json({ ...result, status: await getAscStatus(workspaceId, { refresh: true }) });
 });
 
-export const DELETE = route(() => {
-  clearAscCredentials();
+export const DELETE = route(async () => {
+  const { workspaceId } = await requireWorkspace("admin");
+  await clearAscCredentials(workspaceId);
   return json({ ok: true });
 });

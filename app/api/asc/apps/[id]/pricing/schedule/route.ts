@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { scheduleIapPrices, scheduleSubscriptionPrices } from "@/lib/asc/pricing";
+import { requireWorkspace } from "@/lib/server/context";
 import { body, idParam, json, route } from "@/lib/server/http";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -13,8 +14,11 @@ const schema = z.object({
 });
 
 export const POST = route<Ctx>(async (req, { params }) => {
+  const { workspaceId } = await requireWorkspace("admin");
   const id = await idParam(params);
   const input = await body(req, schema);
-  if (input.kind === "iap") return json(await scheduleIapPrices(id, input.productId, input.rows, { startDate: input.startDate }));
-  return json(await scheduleSubscriptionPrices(id, input.productId, input.rows, { startDate: input.startDate, preserveCurrentPrice: !!input.preserveCurrentPrice }));
+  if (input.kind === "iap") return json(await scheduleIapPrices(workspaceId, id, input.productId, input.rows, { startDate: input.startDate }));
+  return json(
+    await scheduleSubscriptionPrices(workspaceId, id, input.productId, input.rows, { startDate: input.startDate, preserveCurrentPrice: !!input.preserveCurrentPrice }),
+  );
 });
