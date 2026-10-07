@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, useApi } from "@/lib/client/api";
 import type { DetectResult } from "@/lib/keywords/autodetect";
@@ -14,6 +15,7 @@ export function useKeywordDetect(appId: number | undefined, country: string, onD
     refreshInterval: (latest) => (latest?.job?.status === "running" ? 1500 : 0),
     refreshWhenHidden: true,
   });
+  const router = useRouter();
   const job = data?.job ?? null;
   const running = job?.status === "running";
   const seen = useRef<string | null>(null);
@@ -25,9 +27,22 @@ export function useKeywordDetect(appId: number | undefined, country: string, onD
     else if (job.result) {
       const n = job.result.added.length;
       toast.success(n ? `${n} keyword${n > 1 ? "s" : ""} detected and added` : "No new keywords found — your list already covers what this app ranks for");
+      const asc = job.result.appStoreConnect;
+      if (asc && asc !== "used" && appId) {
+        const reason =
+          asc === "not-connected"
+            ? "App Store Connect isn't connected, so your keyword field wasn't included."
+            : asc === "not-linked"
+              ? "This app isn't linked to App Store Connect, so your keyword field wasn't included."
+              : `App Store Connect couldn't be read: ${job.result.appStoreConnectMessage ?? "unknown error"}`;
+        toast.warning(reason, {
+          duration: 12000,
+          action: { label: "Connect", onClick: () => router.push(`/apps/${appId}/page`) },
+        });
+      }
     }
     onDone();
-  }, [job, onDone]);
+  }, [job, onDone, appId, router]);
 
   async function start() {
     if (!appId) return;

@@ -16,6 +16,8 @@ export type DetectResult = {
   added: DetectedKeyword[];
   skipped: number;
   usedAppStoreConnect: boolean;
+  appStoreConnect: AscUse;
+  appStoreConnectMessage: string | null;
   finishedAt: string;
 };
 
@@ -43,23 +45,35 @@ function phrases(value: string | null | undefined) {
   return out;
 }
 
-async function ascCandidates(workspaceId: string, appId: number, country: string): Promise<{ terms: DetectedKeyword[]; used: boolean; subtitle: string | null }> {
-  const app = await getApp(workspaceId, appId);
-  if (!app.ascAppId) return { terms: [], used: false, subtitle: null };
+export type AscUse = "used" | "not-connected" | "not-linked" | "error";
+
+async function ascCandidates(
+  workspaceId: string,
+  appId: number,
+  country: string,
+): Promise<{ terms: DetectedKeyword[]; status: AscUse; message: string | null; subtitle: string | null }> {
+  const { isAscConfigured } = await import("@/lib/asc/client");
+  if (!(await isAscConfigured(workspaceId))) return { terms: [], status: "not-connected", message: null, subtitle: null };
   try {
+    const app = await getApp(workspaceId, appId);
+    if (!app.ascAppId) {
+      const { resolveAscAppId } = await import("@/lib/asc/apps");
+      await resolveAscAppId(workspaceId, appId).catch(() => null);
+      if (!(await getApp(workspaceId, appId)).ascAppId) return { terms: [], status: "not-linked", message: null, subtitle: null };
+    }
     const { getAppMetadata } = await import("@/lib/asc/metadata");
     const meta = await getAppMetadata(workspaceId, appId);
-    const locales = getCountry(country).indexedLocales;
-    const pick =
-      meta.localizations.find((l) => l.locale === locales[0]) ??
-      meta.localizations.find((l) => locales.includes(l.locale)) ??
-      meta.localizations.find((l) => l.locale === meta.primaryLocale);
-    if (!pick) return { terms: [], used: true, subtitle: null };
-    const fromField = splitKeywordField(pick.keywords).map((term) => ({ term, source: "asc-keywords" as const, position: null, popularity: null }));
-    const fromMeta = [...phrases(pick.name), ...phrases(pick.subtitle)].map((term) => ({ term, source: "asc-metadata" as const, position: null, popularity: null }));
-    return { terms: [...fromField, ...fromMeta], used: true, subtitle: pick.subtitle ?? null };
-  } catch {
-    return { terms: [], used: false, subtitle: null };
+    const indexed = getCountry(country).indexedLocales;
+    let picks = meta.localizations.filter((l) => indexed.includes(l.locale));
+    if (!picks.length) picks = meta.localizations.filter((l) => l.locale === meta.primaryLocale);
+    const fromField = picks.flatMap((l) => splitKeywordField(l.keywords)).map((term) => ({ term, source: "asc-keywords" as const, position: null, popularity: null }));
+    const fromMeta = picks
+      .flatMap((l) => [...phrases(l.name), ...phrases(l.subtitle)])
+      .map((term) => ({ term, source: "asc-metadata" as const, position: null, popularity: null }));
+    const subtitle = picks.find((l) => l.subtitle)?.subtitle ?? null;
+    return { terms: [...fromField, ...fromMeta], status: "used", message: null, subtitle };
+  } catch (error) {
+    return { terms: [], status: "error", message: error instanceof Error ? error.message : String(error), subtitle: null };
   }
 }
 
@@ -118,7 +132,9 @@ export function startDetection(workspaceId: string, appId: number, country: stri
       country: c,
       added: selected,
       skipped,
-      usedAppStoreConnect: asc.used,
+      usedAppStoreConnect: asc.status === "used",
+      appStoreConnect: asc.status,
+      appStoreConnectMessage: asc.message,
       finishedAt: new Date().toISOString(),
     };
     await cacheSet(wsKey(workspaceId, `keywords:detect:last:${key(appId, c)}`), result, 30 * DAY);
