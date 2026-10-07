@@ -3,8 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_EXACT = new Set(["/api/integrations/revenuecat", "/api/integrations/superwall"]);
 const PUBLIC_PREFIXES = ["/api/attribution/"];
 
-function isPublic(pathname: string) {
+function isPublic(pathname: string, authorization: string | null) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (path === "/api/mcp" && authorization?.startsWith("Bearer ")) return true;
   return PUBLIC_EXACT.has(path) || PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
@@ -32,7 +33,7 @@ function decodeBasic(header: string | null) {
 
 export async function proxy(request: NextRequest) {
   const password = process.env.OPEN_ASO_PASSWORD;
-  if (!password || isPublic(request.nextUrl.pathname)) return NextResponse.next();
+  if (!password || isPublic(request.nextUrl.pathname, request.headers.get("authorization"))) return NextResponse.next();
   const credentials = decodeBasic(request.headers.get("authorization"));
   const username = process.env.OPEN_ASO_USERNAME;
   if (credentials) {

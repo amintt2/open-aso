@@ -12,12 +12,12 @@ import SettingsCard from "./settings-card";
 
 export type PublicSettings = Record<string, string | { set: true }>;
 
-export const DEFAULT_MODEL = "claude-sonnet-5-5";
+export const DEFAULT_MODEL = "claude-opus-5-5";
 
 const MODELS = [
-  { id: "claude-opus-5-5", label: "Claude Opus 5.5", note: "Most capable, slower" },
-  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", note: "Default · balanced" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", note: "Fastest, cheapest" },
+  { id: "claude-opus-5-5", label: "Claude Opus 5.5", note: "Default · most capable" },
+  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", note: "Faster, cheaper" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", note: "Fastest, cheapest" },
 ];
 
 export default function AiSettings({ settings, onChange }: { settings: PublicSettings; onChange: (next: PublicSettings) => void }) {
