@@ -16,8 +16,10 @@ import SdkPanel from "./sdk-panel";
 import { AppleAdsPanel, AscPanel } from "./external-panels";
 import { useOptionalApi, type AdsStatusLite, type AscStatusLite } from "./external-status";
 import { StatusTag, type CardState } from "./shared";
+import PosthogPanel from "@/components/posthog/posthog-panel";
+import { POSTHOG_DESCRIPTION, PosthogGlyph, posthogCardState } from "@/components/posthog/posthog-sheet";
 
-type Key = "asc" | "ads" | "revenuecat" | "superwall" | "sdk";
+type Key = "asc" | "ads" | "revenuecat" | "superwall" | "sdk" | "posthog";
 
 type Card = { key: Key; title: string; description: string; icon: ReactNode; state: CardState; stateLabel?: string; detail: string };
 
@@ -46,6 +48,7 @@ export default function IntegrationsView() {
 
   const ascState: CardState = asc.isLoading ? "loading" : asc.data === null || asc.error ? "off" : asc.data?.connected ? "connected" : asc.data?.configured ? "error" : "off";
   const adsConn = ads.data?.connection;
+  const posthogCard = posthogCardState(status?.posthog);
   const adsState: CardState = ads.isLoading ? "loading" : !adsConn ? "off" : adsConn.lastError ? "error" : adsConn.connected ? "connected" : adsConn.configured ? "waiting" : "off";
 
   const cards: Card[] = [
@@ -111,6 +114,15 @@ export default function IntegrationsView() {
       state: status ? webhookState(status.sdk.configured, status.sdk) : "loading",
       detail: status ? (status.sdk.lastInstallAt ? `${status.sdk.installs} installs · last ${timeAgo(status.sdk.lastInstallAt)}` : lastSeen(status.sdk, status.sdk.configured)) : "",
     },
+    {
+      key: "posthog",
+      title: "PostHog",
+      description: POSTHOG_DESCRIPTION,
+      icon: <PosthogGlyph />,
+      state: posthogCard.state,
+      stateLabel: posthogCard.label,
+      detail: posthogCard.detail,
+    },
   ];
 
   const current = cards.find((c) => c.key === open);
@@ -169,6 +181,7 @@ export default function IntegrationsView() {
           {open === "revenuecat" && status && <RevenueCatPanel status={status.revenuecat} token={tokens.revenuecat} onToken={(t) => setTokens((s) => ({ ...s, revenuecat: t }))} />}
           {open === "superwall" && status && <SuperwallPanel status={status.superwall} />}
           {open === "sdk" && status && <SdkPanel status={status.sdk} token={tokens.sdk} onToken={(t) => setTokens((s) => ({ ...s, sdk: t }))} />}
+          {open === "posthog" && <PosthogPanel />}
         </IntegrationDetailSheet>
       )}
     </>

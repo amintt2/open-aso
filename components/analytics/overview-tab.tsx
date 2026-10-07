@@ -2,18 +2,38 @@
 
 import { Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { OverviewResult } from "@/lib/analytics/types";
+import type { PosthogNewUsersResult, PosthogStatus } from "@/lib/posthog/types";
+import { useApi } from "@/lib/client/api";
 import { formatCompact, formatMoney, formatPercent, formatUsd } from "@/lib/client/format";
 import { AXIS_TICK, ChartTooltip, GRID, Legend, Panel, SERIES, shortDate } from "./chart-kit";
 import { Delta, DemoBanner, ErrorBlock, KpiTile, LoadingBlock } from "./parts";
 import { useAnalytics, type AnalyticsFilterState } from "./use-analytics";
 
 export default function OverviewTab({ filters }: { filters: AnalyticsFilterState }) {
-  const { data, error } = useAnalytics<OverviewResult>("overview", filters);
+  const { data: posthog } = useApi<PosthogStatus>("/api/posthog/status");
+  const posthogReady = !!posthog?.configured && posthog.mappedApps > 0;
+  const { data: raw, error } = useAnalytics<OverviewResult>("overview", filters, posthogReady ? { demo: "never" } : undefined);
+  const needsFallback = posthogReady && !!raw && !raw.demo && raw.totals.installs === 0;
+  const { data: fallback } = useApi<PosthogNewUsersResult>(
+    needsFallback ? `/api/posthog/newusers?days=${filters.days}${filters.appId === "all" ? "" : `&appId=${filters.appId}`}` : null,
+    { shouldRetryOnError: false },
+  );
   if (error) return <ErrorBlock message={error.message} />;
-  if (!data) return <LoadingBlock />;
+  if (!raw) return <LoadingBlock />;
+  const viaPosthog = needsFallback && !!fallback && fallback.total + fallback.previousTotal > 0;
+  const posthogDaily = new Map((viaPosthog ? fallback.series : []).map((pt) => [pt.date, pt.newUsers]));
+  const data: OverviewResult = viaPosthog
+    ? {
+        ...raw,
+        totals: { ...raw.totals, installs: fallback.total },
+        previous: { ...raw.previous, installs: fallback.previousTotal },
+        series: raw.series.map((pt) => ({ ...pt, installs: posthogDaily.get(pt.date) ?? 0 })),
+      }
+    : raw;
+  const installsLabel = viaPosthog ? "Installs via PostHog" : "Installs";
   const { totals: t, previous: p } = data;
   const tiles = [
-    { label: "Installs", value: formatCompact(t.installs), delta: <Delta current={t.installs} previous={p.installs} /> },
+    { label: installsLabel, value: formatCompact(t.installs), delta: <Delta current={t.installs} previous={p.installs} />, hint: viaPosthog ? "New users from PostHog first-open events — no SDK installs recorded for this period" : undefined },
     { label: "Trials", value: formatCompact(t.trials), delta: <Delta current={t.trials} previous={p.trials} /> },
     { label: "Purchases", value: formatCompact(t.purchases), delta: <Delta current={t.purchases} previous={p.purchases} />, hint: "New paid purchases and trial conversions" },
     { label: "Gross revenue", value: formatUsd(t.grossRevenue), delta: <Delta current={t.grossRevenue} previous={p.grossRevenue} /> },
@@ -33,11 +53,11 @@ export default function OverviewTab({ filters }: { filters: AnalyticsFilterState
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel
           title="Installs & trials"
-          description={`Daily, last ${data.days} days · trial → paid ${formatPercent(t.trialConversion)}`}
+          description={`Daily, last ${data.days} days · trial → paid ${formatPercent(t.trialConversion)}${viaPosthog ? " · installs via PostHog" : ""}`}
           actions={
             <Legend
               items={[
-                { label: "Installs", color: SERIES.blue },
+                { label: installsLabel, color: SERIES.blue },
                 { label: "Trials", color: SERIES.orange },
               ]}
             />
@@ -55,7 +75,7 @@ export default function OverviewTab({ filters }: { filters: AnalyticsFilterState
                     <ChartTooltip
                       {...props}
                       rows={(pt) => [
-                        { label: "Installs", value: formatCompact(pt.installs as number), color: SERIES.blue },
+                        { label: installsLabel, value: formatCompact(pt.installs as number), color: SERIES.blue },
                         { label: "Trials", value: formatCompact(pt.trials as number), color: SERIES.orange },
                         { label: "Purchases", value: formatCompact(pt.purchases as number) },
                       ]}

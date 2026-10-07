@@ -11,6 +11,7 @@ import SourcesTab from "./sources-tab";
 import GeographyTab from "./geography-tab";
 import RetentionTab from "./retention-tab";
 import KeywordRoasTab from "./keyword-roas-tab";
+import ProductTab from "@/components/posthog/product-tab";
 import type { AnalyticsFilterState } from "./use-analytics";
 
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
   { value: "geography", label: "Geography" },
   { value: "retention", label: "Retention" },
   { value: "keywords", label: "Keyword ROAS" },
+  { value: "product", label: "Product (PostHog)" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
@@ -78,6 +80,9 @@ export default function AnalyticsView() {
           </TabsContent>
           <TabsContent value="keywords">
             <KeywordRoasTab filters={filters} />
+          </TabsContent>
+          <TabsContent value="product">
+            <ProductTab filters={filters} onAppChange={(app) => update({ app })} />
           </TabsContent>
         </div>
       </ScrollArea>

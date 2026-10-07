@@ -2,6 +2,8 @@ import { getSetting } from "@/lib/server/settings";
 import { analyticsDb } from "@/lib/analytics/schema";
 import { maskSecret } from "./secrets";
 import { providerActivity, type ProviderActivity } from "./log";
+import { posthogStatus } from "@/lib/posthog/status";
+import type { PosthogStatus } from "@/lib/posthog/types";
 
 export type IntegrationsStatus = {
   revenuecat: ProviderActivity & { configured: boolean; tokenHint: string | null; path: string; events: number };
@@ -16,6 +18,7 @@ export type IntegrationsStatus = {
     pendingAttribution: number;
     lastInstallAt: string | null;
   };
+  posthog: PosthogStatus;
 };
 
 export function integrationsStatus(): IntegrationsStatus {
@@ -40,5 +43,6 @@ export function integrationsStatus(): IntegrationsStatus {
       pendingAttribution: pending,
       lastInstallAt: installs.last,
     },
+    posthog: posthogStatus(),
   };
 }

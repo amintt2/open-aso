@@ -17,7 +17,10 @@ export type SettingKey =
   | "integrations.sdk.token"
   | "mcp.enabled"
   | "mcp.token"
-  | "mcp.allowWrites";
+  | "mcp.allowWrites"
+  | "posthog.host"
+  | "posthog.projectId"
+  | "posthog.apiKey";
 
 const SECRET_KEYS: SettingKey[] = [
   "asc.privateKey",
@@ -27,6 +30,7 @@ const SECRET_KEYS: SettingKey[] = [
   "integrations.superwall.secret",
   "integrations.sdk.token",
   "mcp.token",
+  "posthog.apiKey",
 ];
 
 export function getSetting(key: SettingKey): string | undefined {
