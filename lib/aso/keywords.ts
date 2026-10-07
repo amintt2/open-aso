@@ -80,6 +80,7 @@ function toKeyword(row: KeywordRow): TrackedKeyword {
 const SELECT = `SELECT k.*, (SELECT s.position FROM keyword_snapshots s WHERE s.keyword_id = k.id AND s.date < current_date ORDER BY s.date DESC LIMIT 1) AS prev_position FROM keywords k JOIN apps a ON a.id = k.app_id`;
 
 export async function listKeywords(workspaceId: string, appId: number, country?: string): Promise<TrackedKeyword[]> {
+  await getApp(workspaceId, appId);
   const rows = country
     ? await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? AND k.country = ? ORDER BY k.created_at DESC`, [workspaceId, appId, country])
     : await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? ORDER BY k.created_at DESC`, [workspaceId, appId]);
@@ -181,15 +182,6 @@ export async function refreshKeywords(workspaceId: string | null, ids: number[],
     }),
   );
   return results;
-}
-
-export async function staleKeywordIds(maxAgeHours = 20, limit = 500) {
-  return (
-    await db.all<{ id: number }>(
-      `SELECT id FROM keywords WHERE last_refreshed_at IS NULL OR last_refreshed_at < now() - make_interval(hours => ?) ORDER BY last_refreshed_at ASC NULLS FIRST LIMIT ?`,
-      [maxAgeHours, limit],
-    )
-  ).map((r) => r.id);
 }
 
 export async function keywordHistory(workspaceId: string, id: number) {

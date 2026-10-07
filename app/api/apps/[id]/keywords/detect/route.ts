@@ -12,7 +12,8 @@ export const GET = route<Ctx>(async (req, { params }) => {
   const appId = await idParam(params);
   const search = new URL(req.url).searchParams;
   const jobId = search.get("jobId");
-  const country = (search.get("country") ?? (await getApp(workspaceId, appId)).primaryCountry).toLowerCase();
+  const app = await getApp(workspaceId, appId);
+  const country = (search.get("country") ?? app.primaryCountry).toLowerCase();
   const found = jobId ? getJob(jobId) : runningDetection(workspaceId, appId, country);
   const job = found && found.key.startsWith(`${workspaceId}:`) ? found : null;
   return json({ job: job ? publicJob(job) : null, last: await lastDetection(workspaceId, appId, country) });
