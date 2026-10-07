@@ -97,7 +97,7 @@ function normalize(raw: Record<string, unknown>): StoreApp {
 export function searchApps(term: string, country: string, limit = 200): Promise<StoreApp[]> {
   const c = getCountry(country);
   const key = `itunes:search:${c.code}:${limit}:${term.trim().toLowerCase()}`;
-  return cached(key, 6 * HOUR, async () => {
+  return cached<StoreApp[]>(key, (r) => (r.length ? 6 * HOUR : 5 * 60 * 1000), async () => {
     const url = new URL("https://itunes.apple.com/search");
     url.searchParams.set("term", term.trim());
     url.searchParams.set("country", c.code);

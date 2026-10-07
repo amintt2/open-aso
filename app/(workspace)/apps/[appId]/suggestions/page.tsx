@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import SuggestionsView from "@/components/suggestions/suggestions-view";
 
 export default function Page() {
-  return <ComingSoon title="Suggestions" />;
+  return <SuggestionsView />;
 }

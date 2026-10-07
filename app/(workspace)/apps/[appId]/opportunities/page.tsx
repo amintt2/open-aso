@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import OpportunityFinder from "@/components/opportunities/opportunity-finder";
 
 export default function Page() {
-  return <ComingSoon title="Country Opportunities" />;
+  return <OpportunityFinder />;
 }

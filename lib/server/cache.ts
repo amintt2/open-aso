@@ -24,7 +24,7 @@ const inflight = new Map<string, Promise<unknown>>();
 
 export async function cached<T>(
   key: string,
-  ttlMs: number,
+  ttlMs: number | ((value: T) => number),
   load: () => Promise<T>,
 ): Promise<T> {
   const hit = cacheGet<T>(key);
@@ -33,7 +33,7 @@ export async function cached<T>(
   if (pending) return pending as Promise<T>;
   const promise = load()
     .then((value) => {
-      cacheSet(key, value, ttlMs);
+      cacheSet(key, value, typeof ttlMs === "function" ? ttlMs(value) : ttlMs);
       return value;
     })
     .finally(() => inflight.delete(key));
