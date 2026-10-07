@@ -8,3 +8,21 @@ export type McpSettings = McpConfig & {
 };
 
 export type McpStatus = McpConfig & { stats: McpStats };
+
+export type McpClient = {
+  familyId: string;
+  clientName: string;
+  logoUri: string | null;
+  clientUri: string | null;
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  scopes: string[];
+  connectedAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string;
+  mine: boolean;
+  canRevoke: boolean;
+};
+
+export type McpClients = { canManage: boolean; clients: McpClient[] };

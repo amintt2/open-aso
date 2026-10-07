@@ -1,0 +1,34 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "open-aso",
+  "version": "1.0.0",
+  "description": "Open ASO is an open-source App Store Optimization workspace. This plugin lets Codex and ChatGPT research and track App Store keywords, audit metadata, compare competitors, find country opportunities and optimize Apple Ads in an Open ASO workspace. App Store Connect and Apple Ads changes are dry runs until the user confirms them.",
+  "author": {
+    "name": "Open ASO",
+    "url": "https://aso.french-web.com"
+  },
+  "homepage": "https://aso.french-web.com",
+  "repository": "https://github.com/amintt2/open-aso",
+  "license": "MIT",
+  "keywords": ["aso", "app store optimization", "app store", "keywords", "apple ads", "app store connect", "ios", "rank tracking"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Open ASO",
+        "shortDescription": "App Store keywords and Apple Ads",
+        "longDescription": "Open ASO is an open-source App Store Optimization workspace. This plugin connects your assistant to one Open ASO workspace so you can:\n\n- Research search terms: popularity, difficulty, opportunity and who ranks in the top 10, in any of 66 storefronts.\n- Track keywords and see where your app ranks, with daily history.\n- Audit your title, subtitle and keyword field against the keywords you track, and draft a better version within the 30 / 30 / 100 character limits.\n- Compare rankings with competitors and find countries where a keyword is popular but less competitive.\n- Review Apple Ads performance, get capped bid and budget suggestions, and add exact match or negative keywords.\n- Read installs, revenue, retention and keyword ROAS from the Open ASO SDK, RevenueCat, Superwall and PostHog.\n\nChanges are your call: App Store Connect and Apple Ads tools return a dry-run diff first and only apply after you confirm, and a workspace admin must allow write tools in Open ASO. Downloads, revenue and popularity are modeled estimates.",
+        "developerName": "Open ASO",
+        "category": "Productivity",
+        "capabilities": ["Keyword research", "Rank tracking", "Metadata audit", "Competitor comparison", "Country opportunities", "Apple Ads optimization", "App analytics"],
+        "websiteURL": "https://aso.french-web.com",
+        "supportURL": "https://github.com/amintt2/open-aso/issues",
+        "defaultPrompt": [
+          "Which of my tracked keywords should I focus on this week?",
+          "Audit my app's title, subtitle and keyword field in Open ASO.",
+          "How are my Apple Ads keywords doing, and what bids should I change?"
+        ]
+      },
+      "onboardingSkill": "./skills/get-started/SKILL.md"
+    }
+  }
+}

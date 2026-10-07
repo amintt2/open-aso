@@ -1,0 +1,14 @@
+{
+  "name": "open-aso",
+  "displayName": "Open ASO",
+  "version": "1.0.0",
+  "description": "Run Open ASO from Claude Code: research and track App Store keywords, audit your title, subtitle and keyword field, compare competitors, find country opportunities, estimate keyword impact and optimize Apple Ads. Store and Ads changes are dry runs until you confirm.",
+  "author": {
+    "name": "Open ASO",
+    "url": "https://aso.french-web.com"
+  },
+  "homepage": "https://aso.french-web.com",
+  "repository": "https://github.com/amintt2/open-aso",
+  "license": "MIT",
+  "keywords": ["aso", "app store optimization", "app store", "keywords", "apple ads", "app store connect", "ios", "rank tracking"]
+}

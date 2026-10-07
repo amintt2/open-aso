@@ -9,7 +9,7 @@ import { buildSnippets } from "./snippets";
 export default function SetupCard({ url, tokenRequired, token }: { url: string; tokenRequired: boolean; token: string | null }) {
   const snippets = useMemo(() => buildSnippets(url, { required: tokenRequired, token }), [url, tokenRequired, token]);
   return (
-    <SettingsCard id="setup" title="Connect a client" description="Paste one of these into your assistant's configuration. The server is stateless, so any client that supports Streamable HTTP (or mcp-remote) works.">
+    <SettingsCard id="setup" title="Configure with the static token" description="Paste one of these into a client's configuration. Prefer the OAuth options above when the client supports them.">
       <Tabs defaultValue={snippets[0].id} className="gap-3">
         <TabsList className="border-line-strong flex-wrap border-b">
           {snippets.map((s) => (

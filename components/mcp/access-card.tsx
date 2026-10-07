@@ -29,11 +29,11 @@ export default function AccessCard({
   return (
     <SettingsCard
       id="access"
-      title="Access token"
+      title="Static token"
       description={
         tokenSet
           ? "Every request must send Authorization: Bearer <token>. The token identifies this workspace, so tools only see its data. Rotate it if it leaks; the old token stops working immediately."
-          : "MCP clients authenticate with a workspace token. Generate one to connect an assistant to this workspace."
+          : "Only needed for clients without OAuth support. Generate one and send it as Authorization: Bearer <token>."
       }
       aside={
         <Tag tone={tokenSet ? "green" : "amber"} size="sm" className="gap-1.5 text-[12px]">

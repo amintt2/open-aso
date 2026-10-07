@@ -13,6 +13,8 @@ const INSTRUCTIONS = [
   "Write tools are guarded: they fail unless a workspace admin enabled writes in Open ASO. Tools with dryRun return a diff first; only apply with dryRun: false and confirm: true after the user approved that diff.",
 ].join(" ");
 
+const READ_ONLY_NOTE = "This connection was granted read-only access (scope mcp:read), so write tools are not available.";
+
 function errorMessage(error: unknown) {
   if (error instanceof ZodError) return `Invalid input: ${error.issues.map((i) => `${i.path.join(".") || "input"} ${i.message}`).join("; ")}`;
   return error instanceof Error ? error.message : String(error);
@@ -22,7 +24,8 @@ function text(value: unknown, isError = false): CallToolResult {
   return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], ...(isError ? { isError: true } : {}) };
 }
 
-async function invoke(tool: McpTool, args: Record<string, unknown>, ctx: ToolContext): Promise<CallToolResult> {
+async function invoke(tool: McpTool, args: Record<string, unknown>, ctx: ToolContext, readOnly: boolean): Promise<CallToolResult> {
+  if (readOnly && tool.write) return text(`Error: ${READ_ONLY_NOTE}`, true);
   try {
     const data = await tool.run(args, ctx);
     recordToolCall(ctx.workspaceId, tool.name, true);
@@ -33,18 +36,20 @@ async function invoke(tool: McpTool, args: Record<string, unknown>, ctx: ToolCon
   }
 }
 
-export function createMcpServer(ctx: ToolContext) {
-  const server = new McpServer({ name: "open-aso", title: "Open ASO", version: "0.2.0" }, { instructions: INSTRUCTIONS, capabilities: { tools: {} } });
+export function createMcpServer(ctx: ToolContext, options: { readOnly?: boolean } = {}) {
+  const readOnly = options.readOnly ?? false;
+  const server = new McpServer({ name: "open-aso", title: "Open ASO", version: "0.3.0" }, { instructions: readOnly ? `${INSTRUCTIONS} ${READ_ONLY_NOTE}` : INSTRUCTIONS, capabilities: { tools: {} } });
   for (const tool of TOOLS) {
+    if (readOnly && tool.write) continue;
     server.registerTool(
       tool.name,
       {
         title: tool.title,
         description: tool.description,
         inputSchema: tool.input,
-        annotations: { title: tool.title, readOnlyHint: !tool.write, destructiveHint: tool.write, openWorldHint: true },
+        annotations: { title: tool.title, readOnlyHint: !tool.write, destructiveHint: tool.write, idempotentHint: !tool.write, openWorldHint: true },
       },
-      (args: Record<string, unknown>) => invoke(tool, args, ctx),
+      (args: Record<string, unknown>) => invoke(tool, args, ctx, readOnly),
     );
   }
   return server;

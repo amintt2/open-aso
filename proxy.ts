@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PAGES = ["/login", "/invite/"];
+const PUBLIC_PAGES = ["/login", "/invite/", "/oauth/", "/.well-known/"];
 
 function hasSession(request: NextRequest) {
   return request.cookies.getAll().some((c) => c.name.endsWith("better-auth.session_token"));

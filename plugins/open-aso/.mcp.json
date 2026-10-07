@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "open-aso": {
+      "type": "http",
+      "url": "https://aso.french-web.com/api/mcp"
+    }
+  }
+}

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Power, PowerOff } from "lucide-react";
+import { ChevronRight, Power, PowerOff } from "lucide-react";
 import { toast } from "sonner";
 import Tag from "@/components/_ui/tag";
 import { ScrollArea } from "@/components/_ui/scroll-area";
 import PageHeader from "@/components/shell/page-header";
 import { api, revalidate, useApi } from "@/lib/client/api";
 import AccessCard from "./access-card";
+import ClientsCard from "./clients-card";
+import ConnectCard from "./connect-card";
 import ServerCard from "./server-card";
 import SetupCard from "./setup-card";
 import ToolsCard from "./tools-card";
@@ -16,10 +18,11 @@ import WritesCard from "./writes-card";
 
 const SECTIONS = [
   { id: "server", label: "Server" },
-  { id: "access", label: "Access token" },
+  { id: "connect", label: "Connect" },
+  { id: "clients", label: "Connected clients" },
   { id: "writes", label: "Write tools" },
-  { id: "setup", label: "Connect a client" },
   { id: "tools", label: "Tools" },
+  { id: "advanced", label: "Static token" },
 ];
 
 const noop = () => () => {};
@@ -93,11 +96,24 @@ export default function McpView() {
           {settings ? (
             <>
               {!settings.canManage && <p className="caption-style text-subtle">Only workspace owners and admins can change MCP settings or tokens.</p>}
-              <ServerCard url={url} enabled={enabled} status={status} saving={busy || !settings.canManage} onToggle={(next) => update({ enabled: next }, next ? "MCP server enabled" : "MCP server disabled")} />
-              <AccessCard tokenSet={settings.tokenSet} hint={settings.tokenHint} lastUsedAt={settings.tokenLastUsedAt} revealed={token} busy={busy} canManage={settings.canManage} onRotate={rotate} onClear={clear} />
+              <ServerCard enabled={enabled} status={status} saving={busy || !settings.canManage} onToggle={(next) => update({ enabled: next }, next ? "MCP server enabled" : "MCP server disabled")} />
+              <ConnectCard url={url} origin={origin} enabled={enabled} />
+              <ClientsCard />
               <WritesCard allowWrites={settings.allowWrites} saving={busy || !settings.canManage} onToggle={(next) => update({ allowWrites: next }, next ? "Write tools allowed" : "Write tools blocked")} />
-              <SetupCard url={url} tokenRequired token={token} />
               <ToolsCard layers={settings.layers} tools={settings.tools} allowWrites={settings.allowWrites} />
+              <details id="advanced" open={token ? true : undefined} className="group border-border bg-card rounded-xl border">
+                <summary className="flex cursor-pointer list-none items-center gap-2 p-5 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight aria-hidden className="text-subtle size-4 transition-transform duration-150 group-open:rotate-90" />
+                  <div className="flex flex-col gap-1">
+                    <h2>Advanced: static token</h2>
+                    <p className="caption-style text-subtle">For tools that can&apos;t sign in with OAuth. One bearer token per workspace with full access.</p>
+                  </div>
+                </summary>
+                <div className="flex flex-col gap-4 px-4 pb-4">
+                  <AccessCard tokenSet={settings.tokenSet} hint={settings.tokenHint} lastUsedAt={settings.tokenLastUsedAt} revealed={token} busy={busy} canManage={settings.canManage} onRotate={rotate} onClear={clear} />
+                  <SetupCard url={url} tokenRequired token={token} />
+                </div>
+              </details>
             </>
           ) : (
             <div className="bg-card border-border h-[220px] animate-pulse rounded-xl border" />

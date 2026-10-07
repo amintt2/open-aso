@@ -1,28 +1,26 @@
 "use client";
 
 import SettingsCard, { KeyValue } from "@/components/settings/settings-card";
-import CopyField from "@/components/integrations/copy-field";
 import { formatCompact, timeAgo } from "@/lib/client/format";
 import ToggleRow from "./toggle-row";
 import type { McpStatus } from "./types";
 
-export default function ServerCard({ url, enabled, status, saving, onToggle }: { url: string; enabled: boolean; status: McpStatus | undefined; saving: boolean; onToggle: (next: boolean) => void }) {
+export default function ServerCard({ enabled, status, saving, onToggle }: { enabled: boolean; status: McpStatus | undefined; saving: boolean; onToggle: (next: boolean) => void }) {
   const stats = status?.stats;
   return (
     <SettingsCard
       id="server"
       title="Server"
-      description="Expose this workspace to AI assistants over the Model Context Protocol. Clients connect to one Streamable HTTP endpoint with this workspace's token and only see this workspace's apps, keywords and integrations."
+      description="Expose this workspace to AI assistants over the Model Context Protocol. Assistants connect to one Streamable HTTP endpoint, sign in with OAuth (or a static token) and only see this workspace's apps, keywords and integrations."
     >
       <ToggleRow
         id="mcp-enabled"
         label="Enable MCP server"
-        description={enabled ? "Requests with this workspace's token are accepted." : "Requests with this workspace's token are rejected until enabled."}
+        description={enabled ? "Connected assistants and the static token are accepted." : "Every request for this workspace is rejected until enabled."}
         checked={enabled}
         disabled={saving}
         onChange={onToggle}
       />
-      <CopyField label="Endpoint URL" value={url} />
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <KeyValue label="Requests" value={stats ? formatCompact(stats.requests) : "—"} />
         <KeyValue label="Tool calls" value={stats ? `${formatCompact(stats.toolCalls)}${stats.toolErrors ? ` · ${formatCompact(stats.toolErrors)} failed` : ""}` : "—"} />

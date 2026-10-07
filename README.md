@@ -17,9 +17,26 @@ Built with Next.js 16, React 19, Tailwind 4, Postgres and Better Auth. UI kit de
 | Price localization | Subscriptions & IAPs: purchasing-power or equalized pricing snapped to Apple price points, scheduled changes |
 | Apple Ads | OAuth setup, dashboard, campaigns / ad groups / keywords / negatives, bid & budget edits with diffs, campaign creation, cannibalization fix, playbook-driven recommendations |
 | Analytics | Self-hosted install attribution (AdServices), RevenueCat & Superwall webhooks, overview, sources, geography, retention, keyword ROAS; PostHog product analytics |
-| MCP server | 49 tools (per-workspace token) for Claude Code, Claude Desktop, Cursor, VS Code and Codex — read-only by default, guarded dry-run writes |
+| MCP server | 50 tools over Streamable HTTP with OAuth 2.1 sign-in (or a per-workspace static token) for Claude, Claude Code, Codex, Cursor and VS Code — read-only by default, guarded dry-run writes, plus a Claude Code / Codex plugin with ASO skills |
 
 Popularity comes from Apple's own Search Ads popularity (Apple Ads Platform API) when a workspace or platform Apple Ads key is configured, and is otherwise **estimated** from App Store search suggestions; difficulty, download and revenue numbers are modeled estimates from public App Store data. Rankings come from the public iTunes Search API and can differ slightly from what a given device shows.
+
+## Connect your AI assistant
+
+The MCP server lives at `https://aso.french-web.com/api/mcp` (or `<your APP_URL>/api/mcp` when self-hosting). Clients sign in with OAuth: a browser page opens, you pick the workspace and approve. A workspace admin first enables the server (and, optionally, write tools) in **MCP Server**; connected clients are listed there and can be disconnected.
+
+- **Claude Desktop / claude.ai**: Settings → Connectors → Add custom connector, paste the URL.
+- **Claude Code plugin** (tools + slash commands such as `/open-aso:keywords`, `/open-aso:audit`, `/open-aso:apple-ads` + ASO skills):
+  ```
+  /plugin marketplace add amintt2/open-aso
+  /plugin install open-aso@open-aso
+  ```
+  Then run `/mcp` and sign in. Without the plugin: `claude mcp add --transport http open-aso https://aso.french-web.com/api/mcp`.
+- **Codex**: `codex plugin marketplace add amintt2/open-aso` then `codex plugin add open-aso@open-aso`, or just the server: `codex mcp add open-aso --url https://aso.french-web.com/api/mcp` (then `codex mcp login open-aso` if it doesn't prompt).
+- **Cursor**: use **Add to Cursor** on the MCP Server page, or add `{ "mcpServers": { "open-aso": { "url": "https://aso.french-web.com/api/mcp" } } }` to `~/.cursor/mcp.json`.
+- **Clients without OAuth**: generate a static token under **MCP Server → Advanced** and send `Authorization: Bearer <token>`.
+
+The plugins in `plugins/open-aso` point at the hosted instance; self-hosters use the URL-based commands above with their own domain.
 
 ## Getting started (local)
 

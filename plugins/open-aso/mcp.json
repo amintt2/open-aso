@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "open-aso": {
+      "type": "streamable-http",
+      "url": "https://aso.french-web.com/api/mcp"
+    }
+  }
+}

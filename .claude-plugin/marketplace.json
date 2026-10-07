@@ -1,0 +1,17 @@
+{
+  "name": "open-aso",
+  "description": "Open ASO plugins for Claude Code: App Store keyword research, metadata audits, competitor tracking and Apple Ads optimization from your terminal.",
+  "owner": {
+    "name": "Open ASO",
+    "url": "https://aso.french-web.com"
+  },
+  "plugins": [
+    {
+      "name": "open-aso",
+      "source": "./plugins/open-aso",
+      "description": "Run Open ASO from Claude Code: research and track App Store keywords, audit your title, subtitle and keyword field, compare competitors, find country opportunities, estimate keyword impact and optimize Apple Ads. Store and Ads changes are dry runs until you confirm.",
+      "category": "productivity",
+      "tags": ["aso", "app-store", "keywords", "apple-ads", "app-store-connect", "ios", "marketing"]
+    }
+  ]
+}
