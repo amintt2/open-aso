@@ -22,7 +22,7 @@ export default function KeywordTrendSheet() {
       onOpenChange={(o) => !o && openTrend(null)}
       width="sm:max-w-[820px]"
       title={k ? `“${k.text}”` : "Keyword"}
-      description={k ? `${k.matchType === "EXACT" ? "Exact" : "Broad"} match · last ${days} days · daily data stored locally` : undefined}
+      description={k ? `${k.matchType === "EXACT" ? "Exact" : "Broad"} match · last ${days} days · daily data stored for this workspace` : undefined}
     >
       <ErrorNote error={error} />
       {isLoading && <LoadingRows />}

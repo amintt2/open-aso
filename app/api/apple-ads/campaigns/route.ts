@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { body, json } from "@/lib/server/http";
+import { requireWorkspace } from "@/lib/server/context";
 import { createCampaigns, listCampaigns } from "@/lib/apple-ads/service";
-import { adsRoute, searchOpts, writeFlags } from "@/lib/apple-ads/http";
+import { adsRoute, searchOpts, writeAccess, writeFlags } from "@/lib/apple-ads/http";
 
 const money = z.number().positive().max(1_000_000);
 const plannedCampaign = z.object({
@@ -21,9 +22,13 @@ const plannedCampaign = z.object({
   }),
 });
 
-export const GET = adsRoute(async (req) => json(await listCampaigns(searchOpts(req))));
+export const GET = adsRoute(async (req) => {
+  const { workspaceId } = await requireWorkspace();
+  return json(await listCampaigns(workspaceId, searchOpts(req)));
+});
 
 export const POST = adsRoute(async (req) => {
+  const ctx = await requireWorkspace();
   const input = await body(req, z.object({ plan: z.object({ campaigns: z.array(plannedCampaign).min(1).max(50), warnings: z.array(z.string()) }), ...writeFlags }));
-  return json(await createCampaigns(input.plan, input));
+  return json(await createCampaigns(ctx.workspaceId, input.plan, writeAccess(ctx, input)));
 });

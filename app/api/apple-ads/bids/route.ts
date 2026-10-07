@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { body, json } from "@/lib/server/http";
+import { requireWorkspace } from "@/lib/server/context";
 import { updateBids } from "@/lib/apple-ads/service";
-import { adsRoute, idString, writeFlags } from "@/lib/apple-ads/http";
+import { adsRoute, idString, writeAccess, writeFlags } from "@/lib/apple-ads/http";
 
 export const POST = adsRoute(async (req) => {
+  const ctx = await requireWorkspace();
   const input = await body(
     req,
     z.object({
@@ -12,5 +14,5 @@ export const POST = adsRoute(async (req) => {
       ...writeFlags,
     }),
   );
-  return json(await updateBids(input.changes, input));
+  return json(await updateBids(ctx.workspaceId, input.changes, writeAccess(ctx, input)));
 });

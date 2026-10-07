@@ -1,11 +1,17 @@
 import { z } from "zod";
 import { body, json } from "@/lib/server/http";
+import { requireWorkspace } from "@/lib/server/context";
 import { disconnect, getConnection, knownOrgs, saveConnection } from "@/lib/apple-ads/connection";
 import { adsRoute } from "@/lib/apple-ads/http";
 
-export const GET = adsRoute(() => json({ connection: getConnection(), orgs: knownOrgs() }));
+export const GET = adsRoute(async () => {
+  const { workspaceId, role } = await requireWorkspace();
+  const [connection, orgs] = await Promise.all([getConnection(workspaceId), knownOrgs(workspaceId)]);
+  return json({ connection, orgs, canManage: role !== "member" });
+});
 
 export const PUT = adsRoute(async (req) => {
+  const { workspaceId } = await requireWorkspace("admin");
   const input = await body(
     req,
     z.object({
@@ -15,10 +21,12 @@ export const PUT = adsRoute(async (req) => {
       orgId: z.string().regex(/^\d+$/).nullable().optional(),
     }),
   );
-  return json({ connection: saveConnection(input), orgs: knownOrgs() });
+  const connection = await saveConnection(workspaceId, input);
+  return json({ connection, orgs: await knownOrgs(workspaceId), canManage: true });
 });
 
 export const DELETE = adsRoute(async (req) => {
+  const { workspaceId } = await requireWorkspace("admin");
   const keepKeys = new URL(req.url).searchParams.get("keepKeys") !== "0";
-  return json({ connection: disconnect(keepKeys), orgs: [] });
+  return json({ connection: await disconnect(workspaceId, keepKeys), orgs: [], canManage: true });
 });

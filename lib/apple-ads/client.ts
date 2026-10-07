@@ -34,23 +34,23 @@ function errorMessage(status: number, body: ApiErrorBody) {
   return { message: fallback[status] ?? `Apple Ads request failed (HTTP ${status})`, items };
 }
 
-export function currentOrgId(): string {
-  const orgId = getSetting("ads.orgId");
+export async function currentOrgId(workspaceId: string): Promise<string> {
+  const orgId = await getSetting(workspaceId, "ads.orgId");
   if (!orgId) throw new HttpError(409, "Choose an Apple Ads organization in the connection settings.");
   return orgId;
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function adsRequest<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, opts: RequestOptions = {}): Promise<T> {
+export async function adsRequest<T>(workspaceId: string, method: "GET" | "POST" | "PUT" | "DELETE", path: string, opts: RequestOptions = {}): Promise<T> {
   const url = new URL(API_BASE + path);
   for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined) url.searchParams.set(k, String(v));
   const orgScoped = opts.orgScoped !== false;
-  const orgId = orgScoped ? currentOrgId() : null;
+  const orgId = orgScoped ? await currentOrgId(workspaceId) : null;
 
   let refresh = false;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const token = await getAccessToken(refresh);
+    const token = await getAccessToken(workspaceId, refresh);
     refresh = false;
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
     if (orgId) headers["X-AP-Context"] = `orgId=${orgId}`;
@@ -82,11 +82,11 @@ export async function adsRequest<T>(method: "GET" | "POST" | "PUT" | "DELETE", p
   throw new AppleAdsError(503, "Apple Ads did not respond after several retries.");
 }
 
-export async function listAll<T>(path: string, query: Record<string, string | number | undefined> = {}): Promise<T[]> {
+export async function listAll<T>(workspaceId: string, path: string, query: Record<string, string | number | undefined> = {}): Promise<T[]> {
   const limit = 1000;
   const out: T[] = [];
   for (let offset = 0; offset < 50_000; offset += limit) {
-    const page = await adsRequest<Envelope<T[]>>("GET", path, { query: { ...query, limit, offset } });
+    const page = await adsRequest<Envelope<T[]>>(workspaceId, "GET", path, { query: { ...query, limit, offset } });
     const rows = page.data ?? [];
     out.push(...rows);
     const total = page.pagination?.totalResults ?? rows.length;

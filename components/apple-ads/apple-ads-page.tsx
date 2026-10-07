@@ -36,7 +36,7 @@ function NotConnected() {
     <EmptyState
       icon={Megaphone}
       title="Connect Apple Ads"
-      description="Manage Search Results campaigns, bids, keywords and negatives from Open ASO. Credentials and keys stay on this machine; every change is shown as a diff before it is sent."
+      description="Manage Search Results campaigns, bids, keywords and negatives from Open ASO. Credentials are scoped to this workspace; every change is shown as a diff before it is sent."
       action={
         <div className="flex flex-wrap justify-center gap-2">
           <Button variant="primary" size="md" onClick={() => openSheet("connect")}>
@@ -62,7 +62,7 @@ function Dashboard({ data }: { data: AdsDashboard }) {
       {data.demo && (
         <div className="border-(--tag-purple-border) bg-(--tag-purple-bg) flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
           <FlaskConical aria-hidden className="text-(--tag-purple-text) size-4 shrink-0" />
-          <p className="text-(--tag-purple-text) min-w-0 flex-1 text-[13px]">Demo data: a synthetic account generated locally to preview the module. Changes are simulated and never sent anywhere.</p>
+          <p className="text-(--tag-purple-text) min-w-0 flex-1 text-[13px]">Demo data: a synthetic account generated to preview the module. Changes are simulated and never sent anywhere.</p>
           <Button variant="secondary" size="sm" onClick={() => openSheet("connect")}>
             Connect real account
           </Button>

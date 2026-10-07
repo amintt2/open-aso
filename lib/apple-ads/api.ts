@@ -74,8 +74,8 @@ export function money(value: number, currency: string) {
   return { amount: (Math.round(value * 100) / 100).toFixed(2), currency };
 }
 
-export async function listOrgs(): Promise<AdsOrg[]> {
-  const res = await adsRequest<Envelope<RawAcl[] | RawAcl>>("GET", "/acls", { orgScoped: false });
+export async function listOrgs(workspaceId: string): Promise<AdsOrg[]> {
+  const res = await adsRequest<Envelope<RawAcl[] | RawAcl>>(workspaceId, "GET", "/acls", { orgScoped: false });
   const list = Array.isArray(res.data) ? res.data : res.data ? [res.data] : [];
   return list.map((a) => ({
     orgId: String(a.orgId),
@@ -87,27 +87,27 @@ export async function listOrgs(): Promise<AdsOrg[]> {
   }));
 }
 
-export async function fetchCampaigns() {
-  return (await listAll<RawCampaign>("/campaigns")).filter((c) => !c.deleted);
+export async function fetchCampaigns(workspaceId: string) {
+  return (await listAll<RawCampaign>(workspaceId, "/campaigns")).filter((c) => !c.deleted);
 }
 
-export async function fetchAdGroups(campaignId: string) {
-  return (await listAll<RawAdGroup>(`/campaigns/${campaignId}/adgroups`)).filter((g) => !g.deleted);
+export async function fetchAdGroups(workspaceId: string, campaignId: string) {
+  return (await listAll<RawAdGroup>(workspaceId, `/campaigns/${campaignId}/adgroups`)).filter((g) => !g.deleted);
 }
 
-export async function fetchTargetingKeywords(campaignId: string, adGroupId: string) {
-  return (await listAll<RawKeyword>(`/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords`)).filter((k) => !k.deleted);
+export async function fetchTargetingKeywords(workspaceId: string, campaignId: string, adGroupId: string) {
+  return (await listAll<RawKeyword>(workspaceId, `/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords`)).filter((k) => !k.deleted);
 }
 
-export async function fetchCampaignNegatives(campaignId: string) {
-  return (await listAll<RawNegative>(`/campaigns/${campaignId}/negativekeywords`)).filter((k) => !k.deleted);
+export async function fetchCampaignNegatives(workspaceId: string, campaignId: string) {
+  return (await listAll<RawNegative>(workspaceId, `/campaigns/${campaignId}/negativekeywords`)).filter((k) => !k.deleted);
 }
 
-export async function fetchAdGroupNegatives(campaignId: string, adGroupId: string) {
-  return (await listAll<RawNegative>(`/campaigns/${campaignId}/adgroups/${adGroupId}/negativekeywords`)).filter((k) => !k.deleted);
+export async function fetchAdGroupNegatives(workspaceId: string, campaignId: string, adGroupId: string) {
+  return (await listAll<RawNegative>(workspaceId, `/campaigns/${campaignId}/adgroups/${adGroupId}/negativekeywords`)).filter((k) => !k.deleted);
 }
 
-export async function postCampaign(body: {
+export async function postCampaign(workspaceId: string, body: {
   orgId: number;
   name: string;
   adamId: number;
@@ -118,14 +118,15 @@ export async function postCampaign(body: {
   billingEvent: "TAPS";
   status: CampaignStatus;
 }) {
-  return (await adsRequest<Envelope<RawCampaign>>("POST", "/campaigns", { body })).data;
+  return (await adsRequest<Envelope<RawCampaign>>(workspaceId, "POST", "/campaigns", { body })).data;
 }
 
-export async function putCampaign(campaignId: string, campaign: { status?: CampaignStatus; dailyBudgetAmount?: { amount: string; currency: string }; name?: string }) {
-  return (await adsRequest<Envelope<RawCampaign>>("PUT", `/campaigns/${campaignId}`, { body: { campaign } })).data;
+export async function putCampaign(workspaceId: string, campaignId: string, campaign: { status?: CampaignStatus; dailyBudgetAmount?: { amount: string; currency: string }; name?: string }) {
+  return (await adsRequest<Envelope<RawCampaign>>(workspaceId, "PUT", `/campaigns/${campaignId}`, { body: { campaign } })).data;
 }
 
 export async function postAdGroup(
+  workspaceId: string,
   campaignId: string,
   body: {
     name: string;
@@ -136,29 +137,30 @@ export async function postAdGroup(
     status: CampaignStatus;
   },
 ) {
-  return (await adsRequest<Envelope<RawAdGroup>>("POST", `/campaigns/${campaignId}/adgroups`, { body })).data;
+  return (await adsRequest<Envelope<RawAdGroup>>(workspaceId, "POST", `/campaigns/${campaignId}/adgroups`, { body })).data;
 }
 
 export async function putAdGroup(
+  workspaceId: string,
   campaignId: string,
   adGroupId: string,
   body: { status?: CampaignStatus; defaultBidAmount?: { amount: string; currency: string }; automatedKeywordsOptIn?: boolean; name?: string },
 ) {
-  return (await adsRequest<Envelope<RawAdGroup>>("PUT", `/campaigns/${campaignId}/adgroups/${adGroupId}`, { body })).data;
+  return (await adsRequest<Envelope<RawAdGroup>>(workspaceId, "PUT", `/campaigns/${campaignId}/adgroups/${adGroupId}`, { body })).data;
 }
 
-export async function postKeywords(campaignId: string, adGroupId: string, keywords: { text: string; matchType: MatchType; bidAmount?: { amount: string; currency: string }; status?: KeywordStatus }[]) {
-  return (await adsRequest<Envelope<RawKeyword[]>>("POST", `/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords/bulk`, { body: keywords })).data;
+export async function postKeywords(workspaceId: string, campaignId: string, adGroupId: string, keywords: { text: string; matchType: MatchType; bidAmount?: { amount: string; currency: string }; status?: KeywordStatus }[]) {
+  return (await adsRequest<Envelope<RawKeyword[]>>(workspaceId, "POST", `/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords/bulk`, { body: keywords })).data;
 }
 
-export async function putKeywords(campaignId: string, adGroupId: string, updates: { id: number; bidAmount?: { amount: string; currency: string }; status?: KeywordStatus }[]) {
-  return (await adsRequest<Envelope<RawKeyword[]>>("PUT", `/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords/bulk`, { body: updates })).data;
+export async function putKeywords(workspaceId: string, campaignId: string, adGroupId: string, updates: { id: number; bidAmount?: { amount: string; currency: string }; status?: KeywordStatus }[]) {
+  return (await adsRequest<Envelope<RawKeyword[]>>(workspaceId, "PUT", `/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords/bulk`, { body: updates })).data;
 }
 
-export async function postCampaignNegatives(campaignId: string, negatives: { text: string; matchType: MatchType }[]) {
-  return (await adsRequest<Envelope<RawNegative[]>>("POST", `/campaigns/${campaignId}/negativekeywords/bulk`, { body: negatives })).data;
+export async function postCampaignNegatives(workspaceId: string, campaignId: string, negatives: { text: string; matchType: MatchType }[]) {
+  return (await adsRequest<Envelope<RawNegative[]>>(workspaceId, "POST", `/campaigns/${campaignId}/negativekeywords/bulk`, { body: negatives })).data;
 }
 
-export async function postAdGroupNegatives(campaignId: string, adGroupId: string, negatives: { text: string; matchType: MatchType }[]) {
-  return (await adsRequest<Envelope<RawNegative[]>>("POST", `/campaigns/${campaignId}/adgroups/${adGroupId}/negativekeywords/bulk`, { body: negatives })).data;
+export async function postAdGroupNegatives(workspaceId: string, campaignId: string, adGroupId: string, negatives: { text: string; matchType: MatchType }[]) {
+  return (await adsRequest<Envelope<RawNegative[]>>(workspaceId, "POST", `/campaigns/${campaignId}/adgroups/${adGroupId}/negativekeywords/bulk`, { body: negatives })).data;
 }

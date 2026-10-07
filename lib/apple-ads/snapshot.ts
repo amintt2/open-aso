@@ -1,3 +1,4 @@
+import { db } from "@/lib/server/db";
 import { amount, fetchAdGroupNegatives, fetchAdGroups, fetchCampaignNegatives, fetchCampaigns, type RawAdGroup, type RawCampaign, type RawNegative } from "./api";
 import { pool } from "./client";
 import { loadAttribution, toAttribution, type AttributionIndex } from "./attribution";
@@ -233,11 +234,12 @@ export function assemble(raw: RawAccount): AdsSnapshot {
   };
 }
 
-export async function loadLiveAccount(orgId: string, currency: string, days: RangeDays, targetCpa: number | null): Promise<RawAccount> {
+export async function loadLiveAccount(workspaceId: string, orgId: string, currency: string, days: RangeDays, targetCpa: number | null): Promise<RawAccount> {
   const { start, end } = dateRange(days);
   const warnings: string[] = [];
-  const [campaigns, campaignRows] = await Promise.all([fetchCampaigns(), campaignReport(start, end)]);
-  const countryRows = await campaignCountryReport(start, end).catch((e: unknown) => {
+  const [campaigns, campaignRows] = await Promise.all([fetchCampaigns(workspaceId), campaignReport(workspaceId, start, end)]);
+  await storeCampaigns(workspaceId, orgId, campaigns).catch((e: unknown) => warnings.push(`Campaign → app mapping not saved: ${e instanceof Error ? e.message : String(e)}`));
+  const countryRows = await campaignCountryReport(workspaceId, start, end).catch((e: unknown) => {
     warnings.push(`Country breakdown unavailable: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   });
@@ -245,21 +247,22 @@ export async function loadLiveAccount(orgId: string, currency: string, days: Ran
     const id = String(c.id);
     try {
       const [adGroups, adGroupRows, keywordRows, campaignNegatives] = await Promise.all([
-        fetchAdGroups(id),
-        adGroupReport(id, start, end),
-        keywordReport(id, start, end),
-        fetchCampaignNegatives(id),
+        fetchAdGroups(workspaceId, id),
+        adGroupReport(workspaceId, id, start, end),
+        keywordReport(workspaceId, id, start, end),
+        fetchCampaignNegatives(workspaceId, id),
       ]);
-      const adGroupNegatives = (await pool(adGroups, 3, (g) => fetchAdGroupNegatives(id, String(g.id)))).flat();
-      storeKeywordDaily(orgId, id, (c.countriesOrRegions ?? [])[0]?.toLowerCase() ?? null, currency, keywordRows);
+      const adGroupNegatives = (await pool(adGroups, 3, (g) => fetchAdGroupNegatives(workspaceId, id, String(g.id)))).flat();
+      await storeKeywordDaily(workspaceId, orgId, id, (c.countriesOrRegions ?? [])[0]?.toLowerCase() ?? null, currency, keywordRows);
       return { campaignId: id, adGroups, adGroupRows, keywordRows, campaignNegatives, adGroupNegatives };
     } catch (e) {
       warnings.push(`${c.name}: details unavailable (${e instanceof Error ? e.message : String(e)})`);
       return { campaignId: id, adGroups: [], adGroupRows: [], keywordRows: [], campaignNegatives: [], adGroupNegatives: [] };
     }
   });
-  const shareWarning = await syncImpressionShare(orgId, dateRange(14, 1).start, dateRange(14, 1).end);
+  const shareWarning = await syncImpressionShare(workspaceId, orgId, dateRange(14, 1).start, dateRange(14, 1).end);
   if (shareWarning) warnings.push(shareWarning);
+  const [impressionShare, attribution] = await Promise.all([impressionShareIndex(workspaceId, orgId), loadAttribution(workspaceId, start, end)]);
   return {
     orgId,
     currency,
@@ -270,20 +273,71 @@ export async function loadLiveAccount(orgId: string, currency: string, days: Ran
     campaignRows,
     countryRows,
     bundles,
-    impressionShare: impressionShareIndex(orgId),
-    attribution: loadAttribution(start, end),
+    impressionShare,
+    attribution,
     targetCpa,
     demo: false,
     warnings,
   };
 }
 
-export async function loadPreviousTotals(days: RangeDays): Promise<Metrics | null> {
+export async function loadPreviousTotals(workspaceId: string, days: RangeDays): Promise<Metrics | null> {
   const { start, end } = dateRange(days, days);
   try {
-    const rows = await campaignTotalsReport(start, end);
+    const rows = await campaignTotalsReport(workspaceId, start, end);
     return sumMetrics(rows.map((r) => r.total));
   } catch {
     return null;
   }
+}
+
+async function storeCampaigns(workspaceId: string, orgId: string, campaigns: RawCampaign[]) {
+  const list = campaigns.filter((c) => c.adamId);
+  if (!list.length) return;
+  await db.run(
+    `INSERT INTO ads_campaigns (workspace_id, campaign_id, org_id, adam_id, name, status, countries, updated_at)
+     SELECT ?, t.campaign_id, ?, t.adam_id, t.name, t.status, string_to_array(t.countries, ','), now()
+     FROM unnest(?::text[], ?::bigint[], ?::text[], ?::text[], ?::text[]) AS t(campaign_id, adam_id, name, status, countries)
+     ON CONFLICT (workspace_id, campaign_id) DO UPDATE SET org_id = excluded.org_id, adam_id = excluded.adam_id, name = excluded.name,
+       status = excluded.status, countries = excluded.countries, updated_at = now()`,
+    [
+      workspaceId,
+      orgId,
+      list.map((c) => String(c.id)),
+      list.map((c) => c.adamId),
+      list.map((c) => c.name),
+      list.map((c) => c.status),
+      list.map((c) => (c.countriesOrRegions ?? []).map((x) => x.toLowerCase()).join(",")),
+    ],
+  );
+}
+
+export type CampaignAppLink = {
+  campaignId: string;
+  orgId: string;
+  name: string;
+  status: string | null;
+  countries: string[];
+  adamId: number;
+  appId: number | null;
+  appName: string | null;
+};
+
+export async function campaignAppMap(workspaceId: string): Promise<CampaignAppLink[]> {
+  const rows = await db.all<{ campaign_id: string; org_id: string; name: string; status: string | null; countries: string[] | null; adam_id: number; app_id: number | null; app_name: string | null }>(
+    `SELECT c.campaign_id, c.org_id, c.name, c.status, c.countries, c.adam_id, a.id AS app_id, a.name AS app_name
+     FROM ads_campaigns c LEFT JOIN apps a ON a.workspace_id = c.workspace_id AND a.track_id = c.adam_id
+     WHERE c.workspace_id = ? ORDER BY c.name`,
+    [workspaceId],
+  );
+  return rows.map((r) => ({
+    campaignId: r.campaign_id,
+    orgId: r.org_id,
+    name: r.name,
+    status: r.status,
+    countries: r.countries ?? [],
+    adamId: r.adam_id,
+    appId: r.app_id,
+    appName: r.app_name,
+  }));
 }

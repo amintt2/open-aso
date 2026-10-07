@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { body, json } from "@/lib/server/http";
+import { requireWorkspace } from "@/lib/server/context";
 import { planCampaigns } from "@/lib/apple-ads/service";
 import { adsRoute } from "@/lib/apple-ads/http";
 
 export const POST = adsRoute(async (req) => {
+  const { workspaceId } = await requireWorkspace();
   const input = await body(
     req,
     z.object({
@@ -20,5 +22,5 @@ export const POST = adsRoute(async (req) => {
       demo: z.boolean().optional(),
     }),
   );
-  return json(await planCampaigns(input, { demo: input.demo }));
+  return json(await planCampaigns(workspaceId, input, { demo: input.demo }));
 });

@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { ConfirmDialog, DetailSheet } from "./bits";
 import { useAdsUi } from "./store";
 
-type ConnectionResponse = { connection: AdsConnection; orgs: AdsOrg[] };
+type ConnectionResponse = { connection: AdsConnection; orgs: AdsOrg[]; canManage?: boolean };
 
 function Step({ n, title, done, children }: { n: number; title: string; done?: boolean; children: ReactNode }) {
   return (
@@ -35,6 +35,7 @@ export default function ConnectSheet() {
   const setDemo = useAdsUi((s) => s.setDemo);
   const { data, mutate } = useApi<ConnectionResponse>("/api/apple-ads/connection");
   const c = data?.connection;
+  const canManage = data?.canManage !== false;
   const [ids, setIds] = useState<{ clientId: string; teamId: string; keyId: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [ownKey, setOwnKey] = useState<string | null>(null);
@@ -111,9 +112,10 @@ export default function ConnectSheet() {
       onOpenChange={(o) => !o && openSheet(null)}
       width="sm:max-w-[640px]"
       title="Connect Apple Ads"
-      description="OAuth client credentials for the Apple Ads Campaign Management API. Keys stay on this machine."
+      description="OAuth client credentials for the Apple Ads Campaign Management API. Credentials belong to this workspace; the private key is stored encrypted."
       actions={
-        c?.configured && (
+        c?.configured &&
+        canManage && (
           <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirm("disconnect")}>
             <Unplug aria-hidden className="size-3.5" />
             Disconnect
@@ -121,6 +123,14 @@ export default function ConnectSheet() {
         )
       }
     >
+      <div className="flex flex-col gap-2 px-6 pt-6">
+        <p className="caption-style text-subtle">Uses Campaign Management API v5, which Apple sunsets on Jan 26, 2027.</p>
+        {!canManage && (
+          <p role="note" className="border-border bg-secondary text-soft rounded-lg border p-3 text-[13px]">
+            Only workspace admins can connect or change Apple Ads. You can still browse reports and the demo preview.
+          </p>
+        )}
+      </div>
       <ol className="flex flex-col gap-6 p-6">
         <Step n={1} title="Invite an API user">
           <p className="text-soft">
@@ -134,7 +144,7 @@ export default function ConnectSheet() {
         </Step>
 
         <Step n={2} title="Create a key pair" done={!!c?.publicKey}>
-          <p className="text-soft">Open ASO generates an EC P-256 key pair locally. The private key never leaves this machine; you upload only the public key.</p>
+          <p className="text-soft">Open ASO generates an EC P-256 key pair for this workspace and keeps the private key encrypted on the server. You upload only the public key.</p>
           {c?.publicKey && (
             <div className="relative">
               <pre className="bg-secondary border-line-strong caption-style text-soft overflow-x-auto rounded-lg border p-3 pr-12 leading-[1.5]">{c.publicKey.trim()}</pre>
@@ -150,11 +160,11 @@ export default function ConnectSheet() {
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button variant={c?.publicKey ? "secondary" : "primary"} size="sm" disabled={busy !== null} onClick={() => (c?.publicKey ? setConfirm("regenerate") : generate())}>
+            <Button variant={c?.publicKey ? "secondary" : "primary"} size="sm" disabled={busy !== null || !canManage} onClick={() => (c?.publicKey ? setConfirm("regenerate") : generate())}>
               {busy === "keys" ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <KeyRound aria-hidden className="size-3.5" />}
               {c?.publicKey ? "Regenerate key pair" : "Generate key pair"}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setOwnKey(ownKey === null ? "" : null)}>
+            <Button variant="ghost" size="sm" disabled={!canManage} onClick={() => setOwnKey(ownKey === null ? "" : null)}>
               {ownKey === null ? "Use an existing private key" : "Cancel"}
             </Button>
           </div>
@@ -190,7 +200,7 @@ export default function ConnectSheet() {
               <Input id="ads-key" value={form.keyId} placeholder="xxxxxxxx-xxxx-…" onChange={(e) => setIds({ ...form, keyId: e.target.value })} />
             </Field>
           </div>
-          <Button variant="primary" size="sm" className="self-start" disabled={busy !== null || !idsFilled || !c?.hasPrivateKey} onClick={save}>
+          <Button variant="primary" size="sm" className="self-start" disabled={busy !== null || !canManage || !idsFilled || !c?.hasPrivateKey} onClick={save}>
             {busy === "save" ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <PlugZap aria-hidden className="size-3.5" />}
             Save and test connection
           </Button>
@@ -203,7 +213,7 @@ export default function ConnectSheet() {
             </p>
           )}
           {data?.orgs.length ? (
-            <Select value={c?.orgId ?? undefined} onValueChange={chooseOrg} disabled={busy !== null}>
+            <Select value={c?.orgId ?? undefined} onValueChange={chooseOrg} disabled={busy !== null || !canManage}>
               <SelectTrigger aria-label="Organization">
                 <SelectValue placeholder="Choose an organization" />
               </SelectTrigger>
@@ -218,7 +228,7 @@ export default function ConnectSheet() {
           ) : (
             <p className="text-soft">Test the connection to load the organizations this API user can access. Currency is taken from the organization.</p>
           )}
-          <Button variant="secondary" size="sm" className="self-start" disabled={busy !== null || !c?.configured} onClick={test}>
+          <Button variant="secondary" size="sm" className="self-start" disabled={busy !== null || !canManage || !c?.configured} onClick={test}>
             {busy === "test" ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <RefreshCw aria-hidden className="size-3.5" />}
             Test connection
           </Button>

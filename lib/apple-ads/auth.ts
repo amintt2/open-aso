@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { SignJWT } from "jose";
-import { getSetting, setSetting } from "@/lib/server/settings";
+import { getSettings, setSetting } from "@/lib/server/settings";
 import { HttpError } from "@/lib/server/http";
 
 export const TOKEN_URL = "https://appleid.apple.com/auth/oauth2/token";
@@ -20,17 +20,13 @@ export class AppleAdsError extends Error {
 
 export type Credentials = { clientId: string; teamId: string; keyId: string; privateKey: string };
 
-export function readCredentials(): Partial<Credentials> {
-  return {
-    clientId: getSetting("ads.clientId"),
-    teamId: getSetting("ads.teamId"),
-    keyId: getSetting("ads.keyId"),
-    privateKey: getSetting("ads.privateKey"),
-  };
+export async function readCredentials(workspaceId: string): Promise<Partial<Credentials>> {
+  const s = await getSettings(workspaceId, ["ads.clientId", "ads.teamId", "ads.keyId", "ads.privateKey"]);
+  return { clientId: s["ads.clientId"], teamId: s["ads.teamId"], keyId: s["ads.keyId"], privateKey: s["ads.privateKey"] };
 }
 
-export function requireCredentials(): Credentials {
-  const c = readCredentials();
+export async function requireCredentials(workspaceId: string): Promise<Credentials> {
+  const c = await readCredentials(workspaceId);
   if (!c.clientId || !c.teamId || !c.keyId || !c.privateKey)
     throw new HttpError(409, "Apple Ads is not connected. Add your client ID, team ID, key ID and key pair first.");
   return c as Credentials;
@@ -49,24 +45,24 @@ function loadPrivateKey(pem: string): KeyObject {
   return key;
 }
 
-export function generateKeyPair() {
+export async function generateKeyPair(workspaceId: string) {
   const { privateKey, publicKey } = generateKeyPairSync("ec", {
     namedCurve: "prime256v1",
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
-  setSetting("ads.privateKey", privateKey);
-  setSetting("ads.publicKey", publicKey);
-  resetToken();
+  await setSetting(workspaceId, "ads.privateKey", privateKey);
+  await setSetting(workspaceId, "ads.publicKey", publicKey);
+  resetToken(workspaceId);
   return { publicKey };
 }
 
-export function importPrivateKey(pem: string) {
+export async function importPrivateKey(workspaceId: string, pem: string) {
   const key = loadPrivateKey(pem);
   const publicKey = createPublicKey(key).export({ type: "spki", format: "pem" }).toString();
-  setSetting("ads.privateKey", key.export({ type: "pkcs8", format: "pem" }).toString());
-  setSetting("ads.publicKey", publicKey);
-  resetToken();
+  await setSetting(workspaceId, "ads.privateKey", key.export({ type: "pkcs8", format: "pem" }).toString());
+  await setSetting(workspaceId, "ads.publicKey", publicKey);
+  resetToken(workspaceId);
   return { publicKey };
 }
 
@@ -82,16 +78,23 @@ export async function createClientSecret(c: Credentials, now = Math.floor(Date.n
 }
 
 type TokenState = { token: string; expiresAt: number; fingerprint: string };
-type GlobalWithToken = typeof globalThis & { __openAsoAdsToken?: TokenState; __openAsoAdsTokenPending?: Promise<string> };
+type TokenCache = { tokens: Map<string, TokenState>; pending: Map<string, Promise<string>> };
+type GlobalWithToken = typeof globalThis & { __openAsoAdsTokens?: TokenCache };
+
+function tokenCache(): TokenCache {
+  const g = globalThis as GlobalWithToken;
+  g.__openAsoAdsTokens ??= { tokens: new Map(), pending: new Map() };
+  return g.__openAsoAdsTokens;
+}
 
 function fingerprint(c: Credentials) {
   return createHash("sha256").update(`${c.clientId}|${c.teamId}|${c.keyId}|${c.privateKey}`).digest("hex");
 }
 
-export function resetToken() {
-  const g = globalThis as GlobalWithToken;
-  g.__openAsoAdsToken = undefined;
-  g.__openAsoAdsTokenPending = undefined;
+export function resetToken(workspaceId: string) {
+  const cache = tokenCache();
+  cache.tokens.delete(workspaceId);
+  cache.pending.delete(workspaceId);
 }
 
 async function exchange(c: Credentials): Promise<TokenState> {
@@ -115,21 +118,22 @@ async function exchange(c: Credentials): Promise<TokenState> {
   return { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000, fingerprint: fingerprint(c) };
 }
 
-export async function getAccessToken(force = false): Promise<string> {
-  const c = requireCredentials();
-  const g = globalThis as GlobalWithToken;
+export async function getAccessToken(workspaceId: string, force = false): Promise<string> {
+  const c = await requireCredentials(workspaceId);
+  const cache = tokenCache();
   const fp = fingerprint(c);
-  const current = g.__openAsoAdsToken;
+  const current = cache.tokens.get(workspaceId);
   if (!force && current && current.fingerprint === fp && current.expiresAt - 60_000 > Date.now()) return current.token;
-  if (!force && g.__openAsoAdsTokenPending) return g.__openAsoAdsTokenPending;
+  const inflight = cache.pending.get(workspaceId);
+  if (!force && inflight) return inflight;
   const pending = exchange(c)
     .then((state) => {
-      g.__openAsoAdsToken = state;
+      cache.tokens.set(workspaceId, state);
       return state.token;
     })
     .finally(() => {
-      g.__openAsoAdsTokenPending = undefined;
+      if (cache.pending.get(workspaceId) === pending) cache.pending.delete(workspaceId);
     });
-  g.__openAsoAdsTokenPending = pending;
+  cache.pending.set(workspaceId, pending);
   return pending;
 }

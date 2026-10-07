@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HttpError, route } from "@/lib/server/http";
+import type { WorkspaceContext } from "@/lib/server/context";
 import { AppleAdsError } from "./auth";
 import { RANGE_OPTIONS, type RangeDays } from "./types";
 
@@ -32,4 +33,9 @@ export async function segment(params: Promise<Record<string, string>>, name: str
   const value = (await params)[name];
   if (!value || !/^\d+$/.test(value)) throw new HttpError(400, `Invalid ${name}`);
   return value;
+}
+
+export function writeAccess<T extends { dryRun?: boolean; demo?: boolean }>(ctx: WorkspaceContext, input: T): T & { userId: string } {
+  if (!input.demo && !input.dryRun && ctx.role === "member") throw new HttpError(403, "Only workspace admins can change Apple Ads campaigns. Previews and demo mode stay available.");
+  return { ...input, userId: ctx.userId };
 }

@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { body, HttpError, json } from "@/lib/server/http";
+import { requireWorkspace } from "@/lib/server/context";
 import { addKeywords, pauseEntities, updateBids } from "@/lib/apple-ads/service";
-import { adsRoute, idString, segment, writeFlags } from "@/lib/apple-ads/http";
+import { adsRoute, idString, segment, writeAccess, writeFlags } from "@/lib/apple-ads/http";
 
 type Ctx = { params: Promise<{ campaignId: string; adGroupId: string }> };
 
 export const POST = adsRoute<Ctx>(async (req, { params }) => {
+  const ctx = await requireWorkspace();
   const campaignId = await segment(params, "campaignId");
   const adGroupId = await segment(params, "adGroupId");
   const input = await body(
@@ -15,10 +17,11 @@ export const POST = adsRoute<Ctx>(async (req, { params }) => {
       ...writeFlags,
     }),
   );
-  return json(await addKeywords({ campaignId, adGroupId, keywords: input.keywords }, input));
+  return json(await addKeywords(ctx.workspaceId, { campaignId, adGroupId, keywords: input.keywords }, writeAccess(ctx, input)));
 });
 
 export const PATCH = adsRoute<Ctx>(async (req, { params }) => {
+  const ctx = await requireWorkspace();
   const campaignId = await segment(params, "campaignId");
   const adGroupId = await segment(params, "adGroupId");
   const input = await body(
@@ -32,7 +35,8 @@ export const PATCH = adsRoute<Ctx>(async (req, { params }) => {
   const bids = input.updates.filter((u) => u.bid !== undefined).map((u) => ({ campaignId, adGroupId, keywordId: u.keywordId, bid: u.bid as number }));
   const statuses = input.updates.filter((u) => u.status !== undefined).map((u) => ({ type: "keyword" as const, campaignId, adGroupId, keywordId: u.keywordId, status: u.status as "ACTIVE" | "PAUSED" }));
   if (bids.length && statuses.length) throw new HttpError(400, "Update bids and statuses in separate requests");
-  if (bids.length) return json(await updateBids(bids, input));
-  if (statuses.length) return json(await pauseEntities(statuses, input));
+  const opts = writeAccess(ctx, input);
+  if (bids.length) return json(await updateBids(ctx.workspaceId, bids, opts));
+  if (statuses.length) return json(await pauseEntities(ctx.workspaceId, statuses, opts));
   throw new HttpError(400, "Nothing to update");
 });

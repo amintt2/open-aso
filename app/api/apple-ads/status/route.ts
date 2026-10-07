@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { body, json } from "@/lib/server/http";
+import { requireWorkspace } from "@/lib/server/context";
 import { pauseEntities } from "@/lib/apple-ads/service";
-import { adsRoute, idString, writeFlags } from "@/lib/apple-ads/http";
+import { adsRoute, idString, writeAccess, writeFlags } from "@/lib/apple-ads/http";
 
 const entity = z.discriminatedUnion("type", [
   z.object({ type: z.literal("campaign"), campaignId: idString, status: z.enum(["ENABLED", "PAUSED"]) }),
@@ -10,6 +11,7 @@ const entity = z.discriminatedUnion("type", [
 ]);
 
 export const POST = adsRoute(async (req) => {
+  const ctx = await requireWorkspace();
   const input = await body(req, z.object({ entities: z.array(entity).min(1).max(1000), ...writeFlags }));
-  return json(await pauseEntities(input.entities, input));
+  return json(await pauseEntities(ctx.workspaceId, input.entities, writeAccess(ctx, input)));
 });

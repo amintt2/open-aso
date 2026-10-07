@@ -18,7 +18,7 @@ import { detectCannibalization } from "./cannibalization";
 import { demoAccount, demoKeywordTrend, demoPreviousTotals } from "./demo";
 import { exceedsCap, GUARDRAILS, ratio, sumMetrics, suggestBudgetChanges } from "./knowledge";
 import { keywordDaily } from "./reports";
-import { clearAdsCache, getPref, logChange, setPref } from "./schema";
+import { adsCacheKey, clearAdsCache, getPref, logChange, setPref } from "./prefs";
 import { assemble, loadLiveAccount, loadPreviousTotals } from "./snapshot";
 import type {
   AdGroupBidChange,
@@ -46,39 +46,42 @@ import type {
 } from "./types";
 
 export { getConnection } from "./connection";
+export { campaignAppMap, type CampaignAppLink } from "./snapshot";
 
 export type SourceOpts = { demo?: boolean };
-export type WriteOpts = { dryRun?: boolean; demo?: boolean };
+export type WriteOpts = { dryRun?: boolean; demo?: boolean; userId?: string | null };
 
 const SNAPSHOT_TTL = 15 * 60 * 1000;
 
-function assertLive() {
-  const c = getConnection();
+async function assertLive(workspaceId: string) {
+  const c = await getConnection(workspaceId);
   if (!c.connected) throw new HttpError(409, "Apple Ads is not connected. Connect an account or open the demo preview.");
   return c;
 }
 
-export function getTargetCpa(): number | null {
-  const v = Number(getPref("targetCpa"));
+export async function getTargetCpa(workspaceId: string): Promise<number | null> {
+  const v = Number(await getPref(workspaceId, "targetCpa"));
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-export function setTargetCpa(value: number | null) {
-  setPref("targetCpa", value && value > 0 ? String(value) : null);
-  clearAdsCache();
-  return getTargetCpa();
+export async function setTargetCpa(workspaceId: string, value: number | null) {
+  await setPref(workspaceId, "targetCpa", value && value > 0 ? String(value) : null);
+  await clearAdsCache(workspaceId);
+  return getTargetCpa(workspaceId);
 }
 
-export async function getSnapshot(opts: SourceOpts & { days?: RangeDays; refresh?: boolean } = {}): Promise<AdsSnapshot> {
+export async function getSnapshot(workspaceId: string, opts: SourceOpts & { days?: RangeDays; refresh?: boolean } = {}): Promise<AdsSnapshot> {
   const days = opts.days ?? 30;
-  if (opts.demo) return assemble(demoAccount(days, getTargetCpa()));
-  const c = assertLive();
-  if (opts.refresh) clearAdsCache();
-  return cached(`ads:snapshot:${c.orgId}:${days}`, SNAPSHOT_TTL, async () => assemble(await loadLiveAccount(c.orgId as string, c.currency, days, getTargetCpa())));
+  if (opts.demo) return assemble(demoAccount(days, await getTargetCpa(workspaceId)));
+  const c = await assertLive(workspaceId);
+  if (opts.refresh) await clearAdsCache(workspaceId);
+  return cached(adsCacheKey(workspaceId, `snapshot:${c.orgId}:${days}`), SNAPSHOT_TTL, async () =>
+    assemble(await loadLiveAccount(workspaceId, c.orgId as string, c.currency, days, await getTargetCpa(workspaceId))),
+  );
 }
 
-export function refresh() {
-  clearAdsCache();
+export async function refresh(workspaceId: string) {
+  await clearAdsCache(workspaceId);
 }
 
 function totalAttribution(s: AdsSnapshot, spend: number): Attribution | null {
@@ -90,13 +93,14 @@ function totalAttribution(s: AdsSnapshot, spend: number): Attribution | null {
   return { installs, revenue, rpi: installs ? revenue / installs : null, roas: spend > 0 ? revenue / spend : null };
 }
 
-export async function getDashboard(opts: SourceOpts & { days?: RangeDays; refresh?: boolean } = {}): Promise<AdsDashboard> {
-  const s = await getSnapshot(opts);
+export async function getDashboard(workspaceId: string, opts: SourceOpts & { days?: RangeDays; refresh?: boolean } = {}): Promise<AdsDashboard> {
+  const s = await getSnapshot(workspaceId, opts);
   const totals = sumMetrics(s.campaigns.map((c) => c.metrics));
   const previousTotals = opts.demo
     ? demoPreviousTotals(s.days)
-    : await cached<Metrics | null>(`ads:prev:${s.orgId}:${s.days}`, SNAPSHOT_TTL, () => loadPreviousTotals(s.days));
-  const targetCpa = s.demo ? (getTargetCpa() ?? 4) : getTargetCpa();
+    : await cached<Metrics | null>(adsCacheKey(workspaceId, `prev:${s.orgId}:${s.days}`), SNAPSHOT_TTL, () => loadPreviousTotals(workspaceId, s.days));
+  const savedCpa = await getTargetCpa(workspaceId);
+  const targetCpa = s.demo ? (savedCpa ?? 4) : savedCpa;
   return {
     demo: s.demo,
     currency: s.currency,
@@ -131,13 +135,13 @@ export async function getDashboard(opts: SourceOpts & { days?: RangeDays; refres
   };
 }
 
-export async function listCampaigns(opts: SourceOpts & { days?: RangeDays } = {}) {
-  return (await getSnapshot(opts)).campaigns;
+export async function listCampaigns(workspaceId: string, opts: SourceOpts & { days?: RangeDays } = {}) {
+  return (await getSnapshot(workspaceId, opts)).campaigns;
 }
 
-export async function getPerformance(opts: SourceOpts & { days?: RangeDays } = {}) {
-  const d = await getDashboard(opts);
-  const s = await getSnapshot(opts);
+export async function getPerformance(workspaceId: string, opts: SourceOpts & { days?: RangeDays } = {}) {
+  const d = await getDashboard(workspaceId, opts);
+  const s = await getSnapshot(workspaceId, opts);
   return {
     demo: d.demo,
     currency: d.currency,
@@ -156,8 +160,8 @@ export async function getPerformance(opts: SourceOpts & { days?: RangeDays } = {
   };
 }
 
-export async function getCampaignDetail(campaignId: string, opts: SourceOpts & { days?: RangeDays } = {}): Promise<CampaignDetail> {
-  const s = await getSnapshot(opts);
+export async function getCampaignDetail(workspaceId: string, campaignId: string, opts: SourceOpts & { days?: RangeDays } = {}): Promise<CampaignDetail> {
+  const s = await getSnapshot(workspaceId, opts);
   const campaign = s.campaigns.find((c) => c.id === campaignId);
   if (!campaign) throw new HttpError(404, "Campaign not found");
   return {
@@ -168,8 +172,8 @@ export async function getCampaignDetail(campaignId: string, opts: SourceOpts & {
   };
 }
 
-export async function getAdGroupDetail(campaignId: string, adGroupId: string, opts: SourceOpts & { days?: RangeDays } = {}): Promise<AdGroupDetail> {
-  const s = await getSnapshot(opts);
+export async function getAdGroupDetail(workspaceId: string, campaignId: string, adGroupId: string, opts: SourceOpts & { days?: RangeDays } = {}): Promise<AdGroupDetail> {
+  const s = await getSnapshot(workspaceId, opts);
   const campaign = s.campaigns.find((c) => c.id === campaignId);
   const adGroup = s.adGroups.find((g) => g.id === adGroupId && g.campaignId === campaignId);
   if (!campaign || !adGroup) throw new HttpError(404, "Ad group not found");
@@ -183,7 +187,7 @@ export async function getAdGroupDetail(campaignId: string, adGroupId: string, op
   };
 }
 
-export async function getKeywordTrend(keywordId: string, opts: SourceOpts = {}): Promise<KeywordTrend> {
+export async function getKeywordTrend(workspaceId: string, keywordId: string, opts: SourceOpts = {}): Promise<KeywordTrend> {
   const withRatios = (rows: { date: string; impressions: number; taps: number; installs: number; spend: number }[]) =>
     rows.map((r) => ({ date: r.date, impressions: r.impressions, taps: r.taps, installs: r.installs, spend: r.spend, cpa: ratio(r.spend, r.installs), cpt: ratio(r.spend, r.taps) }));
   if (opts.demo) {
@@ -191,11 +195,11 @@ export async function getKeywordTrend(keywordId: string, opts: SourceOpts = {}):
     if (!t) throw new HttpError(404, "Keyword not found");
     return { keywordId, keyword: t.keyword, currency: "USD", points: withRatios(t.daily), demo: true };
   }
-  const c = assertLive();
-  let rows = keywordDaily(keywordId);
+  const c = await assertLive(workspaceId);
+  let rows = await keywordDaily(workspaceId, keywordId);
   if (!rows.length) {
-    await getSnapshot({ days: 90 });
-    rows = keywordDaily(keywordId);
+    await getSnapshot(workspaceId, { days: 90 });
+    rows = await keywordDaily(workspaceId, keywordId);
   }
   if (!rows.length) throw new HttpError(404, "No daily data stored for this keyword yet");
   return { keywordId, keyword: rows[rows.length - 1].keyword, currency: rows[rows.length - 1].currency ?? c.currency, points: withRatios(rows), demo: false };
@@ -213,7 +217,7 @@ function errorText(e: unknown) {
 
 type Step = { entity: string; run: () => Promise<unknown> };
 
-async function execute(action: string, payload: unknown, changes: DiffRow[], warnings: string[], opts: WriteOpts, steps: Step[], sequential = false): Promise<ChangeResult> {
+async function execute(workspaceId: string, action: string, payload: unknown, changes: DiffRow[], warnings: string[], opts: WriteOpts, steps: Step[], sequential = false): Promise<ChangeResult> {
   const demo = !!opts.demo;
   if (demo || opts.dryRun) return { dryRun: true, demo, changes, warnings, results: [] };
   if (!changes.length) return { dryRun: false, demo: false, changes, warnings, results: [] };
@@ -227,13 +231,13 @@ async function execute(action: string, payload: unknown, changes: DiffRow[], war
       if (sequential) break;
     }
   }
-  logChange(getConnection().orgId, action, payload, results, results.every((r) => r.ok));
-  clearAdsCache();
+  await logChange(workspaceId, (await getConnection(workspaceId)).orgId, action, payload, results, results.every((r) => r.ok), opts.userId ?? null);
+  await clearAdsCache(workspaceId);
   return { dryRun: false, demo: false, changes, warnings, results };
 }
 
-async function context(opts: WriteOpts) {
-  const s = await getSnapshot({ demo: opts.demo, days: 30 });
+async function context(workspaceId: string, opts: WriteOpts) {
+  const s = await getSnapshot(workspaceId, { demo: opts.demo, days: 30 });
   return {
     s,
     currency: s.currency,
@@ -243,8 +247,8 @@ async function context(opts: WriteOpts) {
   };
 }
 
-export async function updateBids(changes: BidChange[], opts: WriteOpts & { enforceCaps?: boolean } = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function updateBids(workspaceId: string, changes: BidChange[], opts: WriteOpts & { enforceCaps?: boolean } = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const diff: DiffRow[] = [];
   const warnings: string[] = [];
   const groups = new Map<string, { campaignId: string; adGroupId: string; updates: { id: number; bidAmount: { amount: string; currency: string } }[] }>();
@@ -268,11 +272,11 @@ export async function updateBids(changes: BidChange[], opts: WriteOpts & { enfor
     g.updates.push({ id: Number(ch.keywordId), bidAmount: money(bid, ctx.currency) });
     groups.set(key, g);
   }
-  return execute("updateBids", changes, diff, warnings, opts, [...groups.values()].map((g) => ({ entity: `${g.updates.length} keyword bid(s) in ${ctx.adGroup(g.adGroupId)?.name ?? g.adGroupId}`, run: () => putKeywords(g.campaignId, g.adGroupId, g.updates) })));
+  return execute(workspaceId, "updateBids", changes, diff, warnings, opts, [...groups.values()].map((g) => ({ entity: `${g.updates.length} keyword bid(s) in ${ctx.adGroup(g.adGroupId)?.name ?? g.adGroupId}`, run: () => putKeywords(workspaceId, g.campaignId, g.adGroupId, g.updates) })));
 }
 
-export async function updateAdGroupBids(changes: AdGroupBidChange[], opts: WriteOpts = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function updateAdGroupBids(workspaceId: string, changes: AdGroupBidChange[], opts: WriteOpts = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const diff: DiffRow[] = [];
   const warnings: string[] = [];
   const steps: Step[] = [];
@@ -283,21 +287,21 @@ export async function updateAdGroupBids(changes: AdGroupBidChange[], opts: Write
     const warning = before != null && exceedsCap(before, ch.defaultBid, GUARDRAILS.maxBidChange) ? "Changes more than 30% at once" : undefined;
     if (warning) warnings.push(`${g?.name ?? ch.adGroupId}: ${warning.toLowerCase()}`);
     diff.push({ entity: g?.name ?? `Ad group ${ch.adGroupId}`, field: "Default max CPT bid", before: before == null ? null : fmtMoney(before, ctx.currency), after: fmtMoney(ch.defaultBid, ctx.currency), warning });
-    steps.push({ entity: g?.name ?? ch.adGroupId, run: () => putAdGroup(ch.campaignId, ch.adGroupId, { defaultBidAmount: money(ch.defaultBid, ctx.currency) }) });
+    steps.push({ entity: g?.name ?? ch.adGroupId, run: () => putAdGroup(workspaceId, ch.campaignId, ch.adGroupId, { defaultBidAmount: money(ch.defaultBid, ctx.currency) }) });
   }
-  return execute("updateAdGroupBids", changes, diff, warnings, opts, steps);
+  return execute(workspaceId, "updateAdGroupBids", changes, diff, warnings, opts, steps);
 }
 
-export async function setSearchMatch(change: { campaignId: string; adGroupId: string; enabled: boolean }, opts: WriteOpts = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function setSearchMatch(workspaceId: string, change: { campaignId: string; adGroupId: string; enabled: boolean }, opts: WriteOpts = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const g = ctx.adGroup(change.adGroupId);
   const warnings = change.enabled && g?.kind === "exact" ? ["Search Match in an exact-match ad group mixes uncontrolled queries into keywords you are pricing. Prefer a separate discovery group."] : [];
   const diff: DiffRow[] = [{ entity: g?.name ?? `Ad group ${change.adGroupId}`, field: "Search Match", before: g ? (g.searchMatch ? "On" : "Off") : null, after: change.enabled ? "On" : "Off", warning: warnings[0] }];
-  return execute("setSearchMatch", change, diff, warnings, opts, [{ entity: g?.name ?? change.adGroupId, run: () => putAdGroup(change.campaignId, change.adGroupId, { automatedKeywordsOptIn: change.enabled }) }]);
+  return execute(workspaceId, "setSearchMatch", change, diff, warnings, opts, [{ entity: g?.name ?? change.adGroupId, run: () => putAdGroup(workspaceId, change.campaignId, change.adGroupId, { automatedKeywordsOptIn: change.enabled }) }]);
 }
 
-export async function updateBudgets(changes: BudgetChange[], opts: WriteOpts & { enforceCaps?: boolean } = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function updateBudgets(workspaceId: string, changes: BudgetChange[], opts: WriteOpts & { enforceCaps?: boolean } = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const diff: DiffRow[] = [];
   const warnings: string[] = [];
   const steps: Step[] = [];
@@ -316,13 +320,13 @@ export async function updateBudgets(changes: BudgetChange[], opts: WriteOpts & {
     }
     const currency = c?.currency ?? ctx.currency;
     diff.push({ entity: c?.name ?? `Campaign ${ch.campaignId}`, field: "Daily budget", before: before == null ? null : fmtMoney(before, currency), after: fmtMoney(budget, currency), warning });
-    steps.push({ entity: c?.name ?? ch.campaignId, run: () => putCampaign(ch.campaignId, { dailyBudgetAmount: money(budget, currency) }) });
+    steps.push({ entity: c?.name ?? ch.campaignId, run: () => putCampaign(workspaceId, ch.campaignId, { dailyBudgetAmount: money(budget, currency) }) });
   }
-  return execute("updateBudgets", changes, diff, warnings, opts, steps);
+  return execute(workspaceId, "updateBudgets", changes, diff, warnings, opts, steps);
 }
 
-export async function pauseEntities(entities: EntityStatusChange[], opts: WriteOpts = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function pauseEntities(workspaceId: string, entities: EntityStatusChange[], opts: WriteOpts = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const diff: DiffRow[] = [];
   const steps: Step[] = [];
   const keywordGroups = new Map<string, { campaignId: string; adGroupId: string; updates: { id: number; status: "ACTIVE" | "PAUSED" }[] }>();
@@ -330,11 +334,11 @@ export async function pauseEntities(entities: EntityStatusChange[], opts: WriteO
     if (e.type === "campaign") {
       const c = ctx.campaign(e.campaignId);
       diff.push({ entity: c?.name ?? `Campaign ${e.campaignId}`, field: "Status", before: c?.status ?? null, after: e.status });
-      steps.push({ entity: c?.name ?? e.campaignId, run: () => putCampaign(e.campaignId, { status: e.status }) });
+      steps.push({ entity: c?.name ?? e.campaignId, run: () => putCampaign(workspaceId, e.campaignId, { status: e.status }) });
     } else if (e.type === "adgroup") {
       const g = ctx.adGroup(e.adGroupId);
       diff.push({ entity: g?.name ?? `Ad group ${e.adGroupId}`, field: "Status", before: g?.status ?? null, after: e.status });
-      steps.push({ entity: g?.name ?? e.adGroupId, run: () => putAdGroup(e.campaignId, e.adGroupId, { status: e.status }) });
+      steps.push({ entity: g?.name ?? e.adGroupId, run: () => putAdGroup(workspaceId, e.campaignId, e.adGroupId, { status: e.status }) });
     } else {
       const k = ctx.keyword(e.keywordId);
       diff.push({ entity: k ? `"${k.text}"` : `Keyword ${e.keywordId}`, field: "Status", before: k?.status ?? null, after: e.status });
@@ -344,8 +348,8 @@ export async function pauseEntities(entities: EntityStatusChange[], opts: WriteO
       keywordGroups.set(key, g);
     }
   }
-  for (const g of keywordGroups.values()) steps.push({ entity: `${g.updates.length} keyword(s) in ${ctx.adGroup(g.adGroupId)?.name ?? g.adGroupId}`, run: () => putKeywords(g.campaignId, g.adGroupId, g.updates) });
-  return execute("setStatus", entities, diff, [], opts, steps);
+  for (const g of keywordGroups.values()) steps.push({ entity: `${g.updates.length} keyword(s) in ${ctx.adGroup(g.adGroupId)?.name ?? g.adGroupId}`, run: () => putKeywords(workspaceId, g.campaignId, g.adGroupId, g.updates) });
+  return execute(workspaceId, "setStatus", entities, diff, [], opts, steps);
 }
 
 function cleanTerms<T extends { text: string }>(list: T[]) {
@@ -360,8 +364,8 @@ function cleanTerms<T extends { text: string }>(list: T[]) {
   return out;
 }
 
-export async function addKeywords(input: { campaignId: string; adGroupId: string; keywords: KeywordInput[] }, opts: WriteOpts = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function addKeywords(workspaceId: string, input: { campaignId: string; adGroupId: string; keywords: KeywordInput[] }, opts: WriteOpts = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const g = ctx.adGroup(input.adGroupId);
   const existing = new Set(ctx.s.keywords.filter((k) => k.adGroupId === input.adGroupId).map((k) => `${k.matchType}:${k.text.toLowerCase()}`));
   const warnings: string[] = [];
@@ -378,11 +382,11 @@ export async function addKeywords(input: { campaignId: string; adGroupId: string
     after: `"${k.text}" · ${fmtMoney(k.bid ?? g?.defaultBid ?? null, ctx.currency)}`,
   }));
   const body = list.map((k) => ({ text: k.text, matchType: k.matchType ?? ("EXACT" as MatchType), status: "ACTIVE" as const, ...(k.bid ? { bidAmount: money(k.bid, ctx.currency) } : {}) }));
-  return execute("addKeywords", input, diff, warnings, opts, body.length ? [{ entity: `${body.length} keyword(s) → ${g?.name ?? input.adGroupId}`, run: () => postKeywords(input.campaignId, input.adGroupId, body) }] : []);
+  return execute(workspaceId, "addKeywords", input, diff, warnings, opts, body.length ? [{ entity: `${body.length} keyword(s) → ${g?.name ?? input.adGroupId}`, run: () => postKeywords(workspaceId, input.campaignId, input.adGroupId, body) }] : []);
 }
 
-export async function addNegativeKeywords(input: { campaignId: string; adGroupId?: string | null; keywords: NegativeInput[] }, opts: WriteOpts = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function addNegativeKeywords(workspaceId: string, input: { campaignId: string; adGroupId?: string | null; keywords: NegativeInput[] }, opts: WriteOpts = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const scope = input.adGroupId ? ctx.adGroup(input.adGroupId)?.name : ctx.campaign(input.campaignId)?.name;
   const existing = new Set(
     ctx.s.negatives.filter((n) => (input.adGroupId ? n.adGroupId === input.adGroupId : n.campaignId === input.campaignId && !n.adGroupId)).map((n) => `${n.matchType}:${n.text.toLowerCase()}`),
@@ -398,12 +402,12 @@ export async function addNegativeKeywords(input: { campaignId: string; adGroupId
   const label = `${input.adGroupId ? "Ad group" : "Campaign"} ${scope ?? input.adGroupId ?? input.campaignId}`;
   const diff: DiffRow[] = list.map((k) => ({ entity: label, field: `Add negative ${(k.matchType ?? "EXACT").toLowerCase()}`, before: null, after: `"${k.text}"` }));
   const body = list.map((k) => ({ text: k.text, matchType: k.matchType ?? ("EXACT" as MatchType) }));
-  const run = () => (input.adGroupId ? postAdGroupNegatives(input.campaignId, input.adGroupId, body) : postCampaignNegatives(input.campaignId, body));
-  return execute("addNegativeKeywords", input, diff, warnings, opts, body.length ? [{ entity: `${body.length} negative(s) → ${label}`, run }] : []);
+  const run = () => (input.adGroupId ? postAdGroupNegatives(workspaceId, input.campaignId, input.adGroupId, body) : postCampaignNegatives(workspaceId, input.campaignId, body));
+  return execute(workspaceId, "addNegativeKeywords", input, diff, warnings, opts, body.length ? [{ entity: `${body.length} negative(s) → ${label}`, run }] : []);
 }
 
-export async function fixCannibalization(issueIds: string[] | "all", opts: WriteOpts = {}): Promise<ChangeResult> {
-  const s = await getSnapshot({ demo: opts.demo, days: 30 });
+export async function fixCannibalization(workspaceId: string, issueIds: string[] | "all", opts: WriteOpts = {}): Promise<ChangeResult> {
+  const s = await getSnapshot(workspaceId, { demo: opts.demo, days: 30 });
   const issues = detectCannibalization(s).filter((i) => issueIds === "all" || issueIds.includes(i.id));
   const byGroup = new Map<string, { campaignId: string; adGroupId: string; name: string; terms: string[] }>();
   for (const i of issues) {
@@ -412,8 +416,8 @@ export async function fixCannibalization(issueIds: string[] | "all", opts: Write
     byGroup.set(i.target.adGroupId, g);
   }
   const diff: DiffRow[] = issues.map((i) => ({ entity: `Ad group ${i.target.adGroupName}`, field: "Add negative exact", before: null, after: `"${i.term}" (${i.target.reason})` }));
-  const steps: Step[] = [...byGroup.values()].map((g) => ({ entity: `${g.terms.length} negative(s) → ${g.name}`, run: () => postAdGroupNegatives(g.campaignId, g.adGroupId, g.terms.map((text) => ({ text, matchType: "EXACT" as MatchType }))) }));
-  return execute("fixCannibalization", { issueIds }, diff, [], opts, steps);
+  const steps: Step[] = [...byGroup.values()].map((g) => ({ entity: `${g.terms.length} negative(s) → ${g.name}`, run: () => postAdGroupNegatives(workspaceId, g.campaignId, g.adGroupId, g.terms.map((text) => ({ text, matchType: "EXACT" as MatchType }))) }));
+  return execute(workspaceId, "fixCannibalization", { issueIds }, diff, [], opts, steps);
 }
 
 function sanitize(s: string) {
@@ -432,15 +436,15 @@ export function campaignName(pattern: string, parts: { app: string; country: str
 
 const MATCH_LABEL: Record<CampaignPlanInput["matchType"], string> = { EXACT: "Exact", BROAD: "Broad", SEARCH_MATCH: "SearchMatch" };
 
-export async function planCampaigns(input: CampaignPlanInput, opts: SourceOpts = {}): Promise<CampaignPlan> {
+export async function planCampaigns(workspaceId: string, input: CampaignPlanInput, opts: SourceOpts = {}): Promise<CampaignPlan> {
   const warnings: string[] = [];
   let snapshot: AdsSnapshot | null = null;
   try {
-    snapshot = await getSnapshot({ demo: opts.demo, days: 30 });
+    snapshot = await getSnapshot(workspaceId, { demo: opts.demo, days: 30 });
   } catch {
     snapshot = null;
   }
-  const currency = snapshot?.currency ?? getConnection().currency;
+  const currency = snapshot?.currency ?? (await getConnection(workspaceId)).currency;
   const existingNames = new Set(snapshot?.campaigns.map((c) => c.name.toLowerCase()) ?? []);
   const countries = [...new Set(input.countries.map((c) => c.toUpperCase()))];
   if (!countries.length) throw new HttpError(400, "Choose at least one country");
@@ -485,7 +489,7 @@ function startTime() {
   return new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 23);
 }
 
-export async function createCampaigns(plan: CampaignPlan, opts: WriteOpts = {}): Promise<ChangeResult> {
+export async function createCampaigns(workspaceId: string, plan: CampaignPlan, opts: WriteOpts = {}): Promise<ChangeResult> {
   const diff: DiffRow[] = [];
   const steps: Step[] = [];
   for (const p of plan.campaigns) {
@@ -495,14 +499,14 @@ export async function createCampaigns(plan: CampaignPlan, opts: WriteOpts = {}):
     if (p.adGroup.negatives.length) diff.push({ entity: p.adGroup.name, field: "Add negative exact", before: null, after: p.adGroup.negatives.map((n) => n.text).join(", ") });
   }
   if (opts.demo || opts.dryRun) return { dryRun: true, demo: !!opts.demo, changes: diff, warnings: plan.warnings, results: [] };
-  const orgId = Number(currentOrgId());
+  const orgId = Number(await currentOrgId(workspaceId));
   for (const p of plan.campaigns) {
     let campaignId = "";
     let adGroupId = "";
     steps.push({
       entity: `Campaign ${p.name}`,
       run: async () => {
-        const c = await postCampaign({
+        const c = await postCampaign(workspaceId, {
           orgId,
           name: p.name,
           adamId: p.adamId,
@@ -519,7 +523,7 @@ export async function createCampaigns(plan: CampaignPlan, opts: WriteOpts = {}):
     steps.push({
       entity: `Ad group ${p.adGroup.name}`,
       run: async () => {
-        const g = await postAdGroup(campaignId, {
+        const g = await postAdGroup(workspaceId, campaignId, {
           name: p.adGroup.name,
           pricingModel: "CPC",
           defaultBidAmount: money(p.adGroup.defaultBid, p.currency),
@@ -533,16 +537,16 @@ export async function createCampaigns(plan: CampaignPlan, opts: WriteOpts = {}):
     if (p.adGroup.keywords.length)
       steps.push({
         entity: `${p.adGroup.keywords.length} keyword(s) → ${p.adGroup.name}`,
-        run: () => postKeywords(campaignId, adGroupId, p.adGroup.keywords.map((k) => ({ text: k.text, matchType: k.matchType, bidAmount: money(k.bid, p.currency), status: "ACTIVE" }))),
+        run: () => postKeywords(workspaceId, campaignId, adGroupId, p.adGroup.keywords.map((k) => ({ text: k.text, matchType: k.matchType, bidAmount: money(k.bid, p.currency), status: "ACTIVE" }))),
       });
     if (p.adGroup.negatives.length)
-      steps.push({ entity: `${p.adGroup.negatives.length} negative(s) → ${p.adGroup.name}`, run: () => postAdGroupNegatives(campaignId, adGroupId, p.adGroup.negatives) });
+      steps.push({ entity: `${p.adGroup.negatives.length} negative(s) → ${p.adGroup.name}`, run: () => postAdGroupNegatives(workspaceId, campaignId, adGroupId, p.adGroup.negatives) });
   }
-  return execute("createCampaigns", plan, diff, plan.warnings, opts, steps, true);
+  return execute(workspaceId, "createCampaigns", plan, diff, plan.warnings, opts, steps, true);
 }
 
-export async function createAdGroup(input: AdGroupPlanInput, opts: WriteOpts = {}): Promise<ChangeResult> {
-  const ctx = await context(opts);
+export async function createAdGroup(workspaceId: string, input: AdGroupPlanInput, opts: WriteOpts = {}): Promise<ChangeResult> {
+  const ctx = await context(workspaceId, opts);
   const c = ctx.campaign(input.campaignId);
   if (!c) throw new HttpError(404, "Campaign not found");
   if (!(input.defaultBid > 0)) throw new HttpError(400, "Default bid must be greater than zero");
@@ -561,7 +565,7 @@ export async function createAdGroup(input: AdGroupPlanInput, opts: WriteOpts = {
     {
       entity: `Ad group ${name}`,
       run: async () => {
-        const g = await postAdGroup(c.id, { name, pricingModel: "CPC", defaultBidAmount: money(input.defaultBid, c.currency), automatedKeywordsOptIn: input.searchMatch, startTime: startTime(), status: input.status ?? "ENABLED" });
+        const g = await postAdGroup(workspaceId, c.id, { name, pricingModel: "CPC", defaultBidAmount: money(input.defaultBid, c.currency), automatedKeywordsOptIn: input.searchMatch, startTime: startTime(), status: input.status ?? "ENABLED" });
         adGroupId = String(g.id);
       },
     },
@@ -569,11 +573,11 @@ export async function createAdGroup(input: AdGroupPlanInput, opts: WriteOpts = {
   if (keywords.length)
     steps.push({
       entity: `${keywords.length} keyword(s) → ${name}`,
-      run: () => postKeywords(c.id, adGroupId, keywords.map((k) => ({ text: k.text, matchType: input.matchType, status: "ACTIVE" as const, bidAmount: money(k.bid && k.bid > 0 ? k.bid : input.defaultBid, c.currency) }))),
+      run: () => postKeywords(workspaceId, c.id, adGroupId, keywords.map((k) => ({ text: k.text, matchType: input.matchType, status: "ACTIVE" as const, bidAmount: money(k.bid && k.bid > 0 ? k.bid : input.defaultBid, c.currency) }))),
     });
-  return execute("createAdGroup", input, diff, warnings, opts, steps, true);
+  return execute(workspaceId, "createAdGroup", input, diff, warnings, opts, steps, true);
 }
 
-export async function setCampaignStatus(campaignId: string, status: CampaignStatus, opts: WriteOpts = {}) {
-  return pauseEntities([{ type: "campaign", campaignId, status }], opts);
+export async function setCampaignStatus(workspaceId: string, campaignId: string, status: CampaignStatus, opts: WriteOpts = {}) {
+  return pauseEntities(workspaceId, [{ type: "campaign", campaignId, status }], opts);
 }

@@ -1,6 +1,6 @@
 import { adsRequest, type Envelope } from "./client";
 import { amount, type RawMoney } from "./api";
-import { ensureSchema } from "./schema";
+import { db } from "@/lib/server/db";
 import { deriveMetrics } from "./knowledge";
 import type { ImpressionShare, MatchType, Metrics } from "./types";
 
@@ -103,10 +103,10 @@ function request(start: string, end: string, opts: { daily?: boolean; groupBy?: 
   };
 }
 
-async function paged<M>(path: string, build: (offset: number) => object): Promise<ParsedRow<M>[]> {
+async function paged<M>(workspaceId: string, path: string, build: (offset: number) => object): Promise<ParsedRow<M>[]> {
   const out: ParsedRow<M>[] = [];
   for (let offset = 0; offset < 20_000; offset += 1000) {
-    const res = await adsRequest<ReportResponse<M>>("POST", path, { body: build(offset) });
+    const res = await adsRequest<ReportResponse<M>>(workspaceId, "POST", path, { body: build(offset) });
     const rows = res.data?.reportingDataResponse?.row ?? [];
     out.push(...parse(rows));
     const total = res.pagination?.totalResults ?? rows.length;
@@ -115,48 +115,58 @@ async function paged<M>(path: string, build: (offset: number) => object): Promis
   return out;
 }
 
-export function campaignReport(start: string, end: string) {
-  return paged<CampaignMeta>("/reports/campaigns", (offset) =>
+export function campaignReport(workspaceId: string, start: string, end: string) {
+  return paged<CampaignMeta>(workspaceId, "/reports/campaigns", (offset) =>
     request(start, end, { daily: true, offset, conditions: [{ field: "deleted", operator: "IN", values: ["false"] }] }),
   );
 }
 
-export function campaignCountryReport(start: string, end: string) {
-  return paged<CampaignMeta>("/reports/campaigns", (offset) => request(start, end, { groupBy: ["countryOrRegion"], offset }));
+export function campaignCountryReport(workspaceId: string, start: string, end: string) {
+  return paged<CampaignMeta>(workspaceId, "/reports/campaigns", (offset) => request(start, end, { groupBy: ["countryOrRegion"], offset }));
 }
 
-export function adGroupReport(campaignId: string, start: string, end: string) {
-  return paged<AdGroupMeta>(`/reports/campaigns/${campaignId}/adgroups`, (offset) =>
+export function adGroupReport(workspaceId: string, campaignId: string, start: string, end: string) {
+  return paged<AdGroupMeta>(workspaceId, `/reports/campaigns/${campaignId}/adgroups`, (offset) =>
     request(start, end, { offset, conditions: [{ field: "deleted", operator: "IN", values: ["false"] }] }),
   );
 }
 
-export function keywordReport(campaignId: string, start: string, end: string) {
-  return paged<KeywordMeta>(`/reports/campaigns/${campaignId}/keywords`, (offset) =>
+export function keywordReport(workspaceId: string, campaignId: string, start: string, end: string) {
+  return paged<KeywordMeta>(workspaceId, `/reports/campaigns/${campaignId}/keywords`, (offset) =>
     request(start, end, { daily: true, offset, conditions: [{ field: "deleted", operator: "IN", values: ["false"] }] }),
   );
 }
 
-export function storeKeywordDaily(orgId: string, campaignId: string, country: string | null, currency: string, rows: ParsedRow<KeywordMeta>[]) {
-  const db = ensureSchema();
-  const upsert = db.prepare(
-    `INSERT INTO ads_keyword_daily (org_id, campaign_id, ad_group_id, keyword_id, keyword, country, date, impressions, taps, installs, spend, currency)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(keyword_id, date) DO UPDATE SET impressions = excluded.impressions, taps = excluded.taps, installs = excluded.installs,
-       spend = excluded.spend, keyword = excluded.keyword, currency = excluded.currency, country = excluded.country, ad_group_id = excluded.ad_group_id`,
+const CHUNK = 2000;
+
+export async function storeKeywordDaily(workspaceId: string, orgId: string, campaignId: string, country: string | null, currency: string, rows: ParsedRow<KeywordMeta>[]) {
+  const flat = rows.flatMap((row) =>
+    row.daily
+      .filter((d) => d.date)
+      .map((d) => [String(row.meta.adGroupId), String(row.meta.keywordId), row.meta.keyword, d.date, d.impressions, d.taps, d.installs, d.spend, row.currency ?? currency] as const),
   );
-  db.transaction(() => {
-    for (const row of rows)
-      for (const d of row.daily)
-        if (d.date)
-          upsert.run(orgId, campaignId, String(row.meta.adGroupId), String(row.meta.keywordId), row.meta.keyword, country, d.date, d.impressions, d.taps, d.installs, d.spend, row.currency ?? currency);
-  })();
+  const unique = [...new Map(flat.map((r) => [`${r[1]}|${r[3]}`, r])).values()];
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const part = unique.slice(i, i + CHUNK);
+    const col = (n: number) => part.map((r) => r[n]);
+    await db.run(
+      `INSERT INTO ads_keyword_daily (workspace_id, org_id, campaign_id, ad_group_id, keyword_id, keyword, country, date, impressions, taps, installs, spend, currency)
+       SELECT ?, ?, ?, t.ad_group_id, t.keyword_id, t.keyword, ?, t.date, t.impressions, t.taps, t.installs, t.spend, t.currency
+       FROM unnest(?::text[], ?::text[], ?::text[], ?::date[], ?::int[], ?::int[], ?::int[], ?::float8[], ?::text[])
+         AS t(ad_group_id, keyword_id, keyword, date, impressions, taps, installs, spend, currency)
+       ON CONFLICT (workspace_id, keyword_id, date) DO UPDATE SET impressions = excluded.impressions, taps = excluded.taps, installs = excluded.installs,
+         spend = excluded.spend, keyword = excluded.keyword, currency = excluded.currency, country = excluded.country, ad_group_id = excluded.ad_group_id,
+         campaign_id = excluded.campaign_id, org_id = excluded.org_id`,
+      [workspaceId, orgId, campaignId, country, col(0), col(1), col(2), col(3), col(4), col(5), col(6), col(7), col(8)],
+    );
+  }
 }
 
-export function keywordDaily(keywordId: string) {
-  return ensureSchema()
-    .prepare("SELECT date, impressions, taps, installs, spend, keyword, currency FROM ads_keyword_daily WHERE keyword_id = ? ORDER BY date ASC")
-    .all(keywordId) as { date: string; impressions: number; taps: number; installs: number; spend: number; keyword: string; currency: string | null }[];
+export async function keywordDaily(workspaceId: string, keywordId: string) {
+  return db.all<{ date: string; impressions: number; taps: number; installs: number; spend: number; keyword: string; currency: string | null }>(
+    "SELECT date, impressions, taps, installs, spend, keyword, currency FROM ads_keyword_daily WHERE workspace_id = ? AND keyword_id = ? ORDER BY date ASC",
+    [workspaceId, keywordId],
+  );
 }
 
 type CustomReport = { id: number; state: string; downloadUri?: string | null };
@@ -200,7 +210,7 @@ function share(value: string | undefined) {
   return n > 1 ? n / 100 : n;
 }
 
-async function importImpressionShare(orgId: string, uri: string) {
+async function importImpressionShare(workspaceId: string, orgId: string, uri: string) {
   const res = await fetch(uri, { cache: "no-store" });
   if (!res.ok) throw new Error(`Impression share download failed (HTTP ${res.status})`);
   const rows = parseCsv(await res.text());
@@ -209,68 +219,88 @@ async function importImpressionShare(orgId: string, uri: string) {
   const col = (name: string) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
   const idx = { date: col("date"), adamId: col("adamId"), country: col("countryOrRegion"), term: col("searchTerm"), low: col("lowImpressionShare"), high: col("highImpressionShare"), rank: col("rank"), pop: col("searchPopularity") };
   if (idx.term < 0 || idx.country < 0) return 0;
-  const db = ensureSchema();
-  const upsert = db.prepare(
-    `INSERT INTO ads_impression_share (org_id, adam_id, country, search_term, date, low, high, rank, popularity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(org_id, adam_id, country, search_term, date) DO UPDATE SET low = excluded.low, high = excluded.high, rank = excluded.rank, popularity = excluded.popularity`,
-  );
-  db.transaction(() => {
-    for (const r of body)
-      upsert.run(
+  const today = new Date().toISOString().slice(0, 10);
+  const parsed = body
+    .filter((r) => r[idx.term] && r[idx.country])
+    .map((r) => ({
+      adamId: idx.adamId >= 0 ? (r[idx.adamId] ?? "") : "",
+      country: r[idx.country].toUpperCase(),
+      term: r[idx.term].toLowerCase().trim(),
+      date: (idx.date >= 0 ? normalizeDate(r[idx.date]) : "") || today,
+      low: share(r[idx.low]),
+      high: share(r[idx.high]),
+      rank: idx.rank >= 0 ? r[idx.rank] || null : null,
+      pop: idx.pop >= 0 ? Number(r[idx.pop]) || null : null,
+    }));
+  const unique = [...new Map(parsed.map((r) => [`${r.adamId}|${r.country}|${r.term}|${r.date}`, r])).values()];
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const part = unique.slice(i, i + CHUNK);
+    await db.run(
+      `INSERT INTO ads_impression_share (workspace_id, org_id, adam_id, country, search_term, date, low, high, rank, popularity)
+       SELECT ?, ?, t.adam_id, t.country, t.term, t.date, t.low, t.high, t.rank, t.pop
+       FROM unnest(?::text[], ?::text[], ?::text[], ?::date[], ?::real[], ?::real[], ?::text[], ?::int[]) AS t(adam_id, country, term, date, low, high, rank, pop)
+       ON CONFLICT (workspace_id, org_id, adam_id, country, search_term, date) DO UPDATE SET low = excluded.low, high = excluded.high, rank = excluded.rank, popularity = excluded.popularity`,
+      [
+        workspaceId,
         orgId,
-        idx.adamId >= 0 ? r[idx.adamId] : "",
-        r[idx.country].toUpperCase(),
-        r[idx.term].toLowerCase().trim(),
-        idx.date >= 0 ? normalizeDate(r[idx.date]) : new Date().toISOString().slice(0, 10),
-        share(r[idx.low]),
-        share(r[idx.high]),
-        idx.rank >= 0 ? r[idx.rank] || null : null,
-        idx.pop >= 0 ? Number(r[idx.pop]) || null : null,
-      );
-  })();
-  return body.length;
+        part.map((r) => r.adamId),
+        part.map((r) => r.country),
+        part.map((r) => r.term),
+        part.map((r) => r.date),
+        part.map((r) => r.low),
+        part.map((r) => r.high),
+        part.map((r) => r.rank),
+        part.map((r) => (r.pop == null ? null : Math.round(r.pop))),
+      ],
+    );
+  }
+  return unique.length;
 }
 
-export async function syncImpressionShare(orgId: string, start: string, end: string): Promise<string | null> {
-  const db = ensureSchema();
-  const latest = db.prepare("SELECT id, state, imported_at, created_at FROM ads_custom_reports WHERE org_id = ? ORDER BY created_at DESC LIMIT 1").get(orgId) as
-    | { id: string; state: string; imported_at: string | null; created_at: string }
-    | undefined;
+export async function syncImpressionShare(workspaceId: string, orgId: string, start: string, end: string): Promise<string | null> {
+  const latest = await db.get<{ id: string; state: string; imported_at: string | null; created_at: string }>(
+    "SELECT id, state, imported_at, created_at FROM ads_custom_reports WHERE workspace_id = ? AND org_id = ? ORDER BY created_at DESC LIMIT 1",
+    [workspaceId, orgId],
+  );
   try {
     if (latest && !latest.imported_at && latest.state !== "FAILED") {
-      const res = await adsRequest<Envelope<CustomReport>>("GET", `/custom-reports/${latest.id}`);
+      const res = await adsRequest<Envelope<CustomReport>>(workspaceId, "GET", `/custom-reports/${latest.id}`);
       const state = res.data?.state ?? "UNKNOWN";
-      db.prepare("UPDATE ads_custom_reports SET state = ? WHERE id = ?").run(state, latest.id);
+      await db.run("UPDATE ads_custom_reports SET state = ? WHERE workspace_id = ? AND id = ?", [state, workspaceId, latest.id]);
       if (state === "COMPLETED" && res.data.downloadUri) {
-        await importImpressionShare(orgId, res.data.downloadUri);
-        db.prepare("UPDATE ads_custom_reports SET imported_at = datetime('now') WHERE id = ?").run(latest.id);
+        await importImpressionShare(workspaceId, orgId, res.data.downloadUri);
+        await db.run("UPDATE ads_custom_reports SET imported_at = now() WHERE workspace_id = ? AND id = ?", [workspaceId, latest.id]);
       }
       return null;
     }
-    const ageHours = latest ? (Date.now() - new Date(latest.created_at.replace(" ", "T") + "Z").getTime()) / 3_600_000 : Infinity;
+    const ageHours = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 3_600_000 : Infinity;
     if (ageHours < 24) return null;
-    const res = await adsRequest<Envelope<CustomReport>>("POST", "/custom-reports", {
+    const res = await adsRequest<Envelope<CustomReport>>(workspaceId, "POST", "/custom-reports", {
       body: { name: `open_aso_share_${end}`.slice(0, 50), startTime: start, endTime: end, granularity: "DAILY" },
     });
-    if (res.data?.id) db.prepare("INSERT OR REPLACE INTO ads_custom_reports (id, org_id, state, start_date, end_date) VALUES (?, ?, ?, ?, ?)").run(String(res.data.id), orgId, res.data.state ?? "QUEUED", start, end);
+    if (res.data?.id)
+      await db.run(
+        `INSERT INTO ads_custom_reports (workspace_id, id, org_id, state, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (workspace_id, id) DO UPDATE SET org_id = excluded.org_id, state = excluded.state, start_date = excluded.start_date, end_date = excluded.end_date, imported_at = NULL, created_at = now()`,
+        [workspaceId, String(res.data.id), orgId, res.data.state ?? "QUEUED", start, end],
+      );
     return null;
   } catch (error) {
     return `Impression share unavailable: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
-export function impressionShareIndex(orgId: string): Map<string, ImpressionShare> {
-  const rows = ensureSchema()
-    .prepare(
-      `SELECT adam_id, country, search_term, AVG(low) AS low, AVG(high) AS high, MAX(rank) AS rank FROM ads_impression_share
-       WHERE org_id = ? AND date >= date('now', '-14 days') GROUP BY adam_id, country, search_term`,
-    )
-    .all(orgId) as { adam_id: string; country: string; search_term: string; low: number | null; high: number | null; rank: string | null }[];
+export async function impressionShareIndex(workspaceId: string, orgId: string): Promise<Map<string, ImpressionShare>> {
+  const rows = await db.all<{ adam_id: string; country: string; search_term: string; low: number | null; high: number | null; rank: string | null }>(
+    `SELECT adam_id, country, search_term, AVG(low) AS low, AVG(high) AS high, MAX(rank) AS rank FROM ads_impression_share
+     WHERE workspace_id = ? AND org_id = ? AND date >= current_date - 14 GROUP BY adam_id, country, search_term`,
+    [workspaceId, orgId],
+  );
   const map = new Map<string, ImpressionShare>();
   for (const r of rows) if (r.low != null && r.high != null) map.set(`${r.adam_id}|${r.country}|${r.search_term}`, { low: r.low, high: r.high, rank: r.rank });
   return map;
 }
 
-export function campaignTotalsReport(start: string, end: string) {
-  return paged<CampaignMeta>("/reports/campaigns", (offset) => request(start, end, { offset }));
+export function campaignTotalsReport(workspaceId: string, start: string, end: string) {
+  return paged<CampaignMeta>(workspaceId, "/reports/campaigns", (offset) => request(start, end, { offset }));
 }
