@@ -1,3 +1,4 @@
+import { reloadTo } from "@/lib/workspace/navigate";
 import useSWR, { mutate, type SWRConfiguration } from "swr";
 
 export class ApiError extends Error {
@@ -17,7 +18,7 @@ export async function api<T>(url: string, init?: Omit<RequestInit, "body"> & { b
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+    reloadTo(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
   }
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Request failed (${res.status})`);
   return data as T;
