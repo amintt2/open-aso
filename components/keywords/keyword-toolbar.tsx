@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   Copy,
   Download,
@@ -34,6 +34,8 @@ type Props = {
   onCopy: () => void;
   onExport: () => void;
   onDelete: () => void;
+  extraFilters?: ReactNode;
+  unit?: string;
 };
 
 export default function KeywordToolbar({
@@ -45,6 +47,8 @@ export default function KeywordToolbar({
   total,
   progress,
   selected,
+  extraFilters,
+  unit = "keywords",
   ...bulk
 }: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
@@ -86,6 +90,7 @@ export default function KeywordToolbar({
         </kbd>
       </div>
       <KeywordFilters value={filters} onChange={onFilters} />
+      {extraFilters}
       {selected.length > 0 ? (
         <BulkBar selected={selected} {...bulk} />
       ) : (
@@ -102,8 +107,8 @@ export default function KeywordToolbar({
           {total > 0 && (
             <span className="hidden tabular-nums sm:inline">
               {shown === total
-                ? `${total} keywords`
-                : `${shown} of ${total} keywords`}
+                ? `${total} ${unit}`
+                : `${shown} of ${total} ${unit}`}
             </span>
           )}
           <span className="hidden lg:inline">
@@ -125,7 +130,15 @@ function BulkBar({
   onDelete,
 }: Omit<
   Props,
-  "query" | "onQuery" | "filters" | "onFilters" | "shown" | "total" | "progress"
+  | "query"
+  | "onQuery"
+  | "filters"
+  | "onFilters"
+  | "shown"
+  | "total"
+  | "progress"
+  | "extraFilters"
+  | "unit"
 >) {
   const allLiked = selected.every((k) => k.liked);
   return (

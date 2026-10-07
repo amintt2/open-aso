@@ -206,3 +206,152 @@ export function keywordInsight(
     return "Low search volume. Keep it in the hidden keyword field rather than spending title or subtitle space on it.";
   return "Balanced keyword. Keep it in your keyword field and track how your position responds to each release.";
 }
+
+export type KeywordGroup = {
+  term: string;
+  rows: TrackedKeyword[];
+  ids: number[];
+  countries: string[];
+  bestPosition: TrackedKeyword | null;
+  bestPopularity: TrackedKeyword | null;
+  popularity: number | null;
+  difficulty: number | null;
+  label: TargetingLabel | null;
+  downloadsEst: number | null;
+  lastRefreshedAt: string | null;
+  pending: boolean;
+  liked: boolean;
+  notes: string | null;
+};
+
+export type GroupSortKey =
+  | "term"
+  | "countries"
+  | "position"
+  | "popularity"
+  | "difficulty"
+  | "label"
+  | "downloadsEst"
+  | "lastRefreshedAt";
+
+export type GroupSort = { key: GroupSortKey; dir: "asc" | "desc" };
+
+function byPosition(a: TrackedKeyword, b: TrackedKeyword) {
+  if (a.position == null && b.position == null)
+    return (b.popularity ?? -1) - (a.popularity ?? -1);
+  if (a.position == null) return 1;
+  if (b.position == null) return -1;
+  return a.position - b.position;
+}
+
+function mostCommonLabel(rows: TrackedKeyword[], fallback: TargetingLabel | null) {
+  const counts = new Map<TargetingLabel, number>();
+  rows.forEach((k) => k.label && counts.set(k.label, (counts.get(k.label) ?? 0) + 1));
+  let best: TargetingLabel | null = null;
+  let max = 0;
+  for (const [label, n] of counts) {
+    if (n > max || (n === max && label === fallback)) {
+      best = label;
+      max = n;
+    }
+  }
+  return best;
+}
+
+function toGroup(term: string, rows: TrackedKeyword[]): KeywordGroup {
+  const sorted = [...rows].sort(byPosition);
+  const ranked = sorted.find((k) => k.position != null) ?? null;
+  const scored = rows.filter((k) => k.popularity != null);
+  const bestPopularity = scored.length
+    ? scored.reduce((a, b) => ((b.popularity ?? 0) > (a.popularity ?? 0) ? b : a))
+    : null;
+  const difficulties = rows
+    .map((k) => k.difficulty)
+    .filter((d): d is number => d != null);
+  const downloads = rows
+    .map((k) => k.downloadsEst)
+    .filter((d): d is number => d != null);
+  const refreshed = rows.map((k) => k.lastRefreshedAt);
+  const notes = rows
+    .filter((k) => k.notes)
+    .map((k) => `${k.country.toUpperCase()}: ${k.notes}`);
+  return {
+    term,
+    rows: sorted,
+    ids: sorted.map((k) => k.id),
+    countries: sorted.map((k) => k.country),
+    bestPosition: ranked,
+    bestPopularity,
+    popularity: bestPopularity?.popularity ?? null,
+    difficulty: difficulties.length
+      ? Math.round(difficulties.reduce((s, d) => s + d, 0) / difficulties.length)
+      : null,
+    label: mostCommonLabel(rows, bestPopularity?.label ?? null),
+    downloadsEst: downloads.length ? downloads.reduce((s, d) => s + d, 0) : null,
+    lastRefreshedAt: refreshed.some((d) => !d)
+      ? null
+      : (refreshed as string[]).reduce((a, b) => (parseDate(b) < parseDate(a) ? b : a)),
+    pending: rows.every((k) => k.popularity == null),
+    liked: rows.some((k) => k.liked),
+    notes: notes.length ? notes.join("\n") : null,
+  };
+}
+
+export function groupKeywords(list: TrackedKeyword[]) {
+  const map = new Map<string, TrackedKeyword[]>();
+  for (const k of list) {
+    const term = normalizeTerm(k.term);
+    const rows = map.get(term);
+    if (rows) rows.push(k);
+    else map.set(term, [k]);
+  }
+  return [...map].map(([term, rows]) => toGroup(term, rows));
+}
+
+export function filterGroups(
+  groups: KeywordGroup[],
+  query: string,
+  f: Filters,
+  minCountries: number,
+) {
+  return groups.filter(
+    (g) =>
+      g.countries.length >= minCountries &&
+      filterKeywords(g.rows, query, f).length > 0,
+  );
+}
+
+function groupValue(g: KeywordGroup, key: GroupSortKey): string | number | null {
+  if (key === "term") return g.term;
+  if (key === "countries") return g.countries.length;
+  if (key === "position") return g.bestPosition?.position ?? null;
+  if (key === "label") return g.label ? TARGETING_LABELS.indexOf(g.label) : null;
+  if (key === "lastRefreshedAt")
+    return g.lastRefreshedAt ? parseDate(g.lastRefreshedAt) : null;
+  return g[key];
+}
+
+export function sortGroups(groups: KeywordGroup[], sort: GroupSort) {
+  const sign = sort.dir === "asc" ? 1 : -1;
+  return [...groups].sort((a, b) => {
+    const av = groupValue(a, sort.key);
+    const bv = groupValue(b, sort.key);
+    if (av == null && bv == null) return a.term.localeCompare(b.term);
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    const cmp =
+      typeof av === "string" && typeof bv === "string"
+        ? av.localeCompare(bv)
+        : Number(av) - Number(bv);
+    return cmp === 0 ? a.term.localeCompare(b.term) : cmp * sign;
+  });
+}
+
+export function defaultGroupDir(key: GroupSortKey): GroupSort["dir"] {
+  return key === "term" ||
+    key === "position" ||
+    key === "difficulty" ||
+    key === "label"
+    ? "asc"
+    : "desc";
+}
