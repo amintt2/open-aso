@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import PricingView from "@/components/pricing/pricing-view";
 
 export default function Page() {
-  return <ComingSoon title="Price Localization" />;
+  return <PricingView />;
 }
