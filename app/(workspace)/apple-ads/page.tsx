@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import AppleAdsPage from "@/components/apple-ads/apple-ads-page";
 
 export default function Page() {
-  return <ComingSoon title="Apple Ads" />;
+  return <AppleAdsPage />;
 }
