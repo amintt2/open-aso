@@ -64,9 +64,9 @@ export const adsTools = [
     layer: "ads",
     description: "Whether an Apple Ads account is connected, which organization and currency it uses, the last error and the target CPA used for bid decisions. Check this before other Apple Ads tools; demo: true works without a connection.",
     input: {},
-    run: () => {
-      const c = getConnection();
-      return { configured: c.configured, connected: c.connected, orgId: c.orgId, orgName: c.orgName, currency: c.currency, lastError: c.lastError, lastCheckedAt: c.lastCheckedAt, targetCpa: getTargetCpa() };
+    run: async (_args, { workspaceId }) => {
+      const [c, targetCpa] = await Promise.all([getConnection(workspaceId), getTargetCpa(workspaceId)]);
+      return { configured: c.configured, connected: c.connected, orgId: c.orgId, orgName: c.orgName, currency: c.currency, lastError: c.lastError, lastCheckedAt: c.lastCheckedAt, targetCpa };
     },
   }),
   defineTool({
@@ -75,8 +75,8 @@ export const adsTools = [
     layer: "ads",
     description: "Apple Ads campaigns with status, serving state, countries, daily budget, budget utilization and metrics (impressions, taps, installs, spend, TTR, CR, CPT, CPA) plus attributed revenue when available.",
     input: { days, demo },
-    run: async ({ days: d, demo: isDemo }) =>
-      (await listCampaigns({ days: d as RangeDays, demo: isDemo })).map((c) => ({
+    run: async ({ days: d, demo: isDemo }, { workspaceId }) =>
+      (await listCampaigns(workspaceId, { days: d as RangeDays, demo: isDemo })).map((c) => ({
         id: c.id,
         name: c.name,
         status: c.status,
@@ -97,7 +97,7 @@ export const adsTools = [
     layer: "ads",
     description: "Account performance for a window: totals vs the previous period, attribution (revenue, ROAS), per-campaign metrics, the top 25 keywords by spend with diagnosis, bid and budget suggestions and cannibalization issues.",
     input: { days, demo },
-    run: ({ days: d, demo: isDemo }) => getPerformance({ days: d as RangeDays, demo: isDemo }),
+    run: ({ days: d, demo: isDemo }, { workspaceId }) => getPerformance(workspaceId, { days: d as RangeDays, demo: isDemo }),
   }),
   defineTool({
     name: "get_apple_ads_keyword_trend",
@@ -105,7 +105,7 @@ export const adsTools = [
     layer: "ads",
     description: "Daily impressions, taps, installs, spend, CPT and CPA for one Apple Ads keyword (keyword id from get_apple_ads_performance).",
     input: { keywordId: id, demo },
-    run: ({ keywordId, demo: isDemo }) => getKeywordTrend(keywordId, { demo: isDemo }),
+    run: ({ keywordId, demo: isDemo }, { workspaceId }) => getKeywordTrend(workspaceId, keywordId, { demo: isDemo }),
   }),
   defineTool({
     name: "get_apple_ads_playbook",
@@ -141,14 +141,14 @@ export const adsTools = [
         .optional()
         .describe("Raw metrics for a what-if diagnosis when keywordId is not given"),
     },
-    run: async ({ keywordId, demo: isDemo, metrics }) => {
+    run: async ({ keywordId, demo: isDemo, metrics }, { workspaceId }) => {
       if (keywordId) {
-        const s = await getSnapshot({ demo: isDemo, days: 30 });
+        const s = await getSnapshot(workspaceId, { demo: isDemo, days: 30 });
         const k = findKeyword(s, keywordId);
         return { keywordId: k.id, text: k.text, matchType: k.matchType, status: k.status, bid: k.bid, suggestedBid: k.suggestedBid, impressionShare: k.impressionShare, metrics: k.metrics, attribution: k.attribution, diagnosis: k.diagnosis, suggestion: k.suggestion };
       }
       if (!metrics) throw new HttpError(400, "Provide keywordId or metrics");
-      const signal = { ...metrics, targetCpa: metrics.targetCpa ?? getTargetCpa() };
+      const signal = { ...metrics, targetCpa: metrics.targetCpa ?? (await getTargetCpa(workspaceId)) };
       const diagnosis = diagnoseKeyword(signal);
       const row: BidRow = { ...signal, keywordId: "what-if", campaignId: "", adGroupId: "", text: "what-if" };
       const suggestion = suggestBid(row, diagnosis);
@@ -161,8 +161,8 @@ export const adsTools = [
     layer: "ads",
     description: "Bid suggestions (capped at ±30%) for keywords with enough data and budget suggestions for capped or overspending campaigns, each with the rule and reason. Feed approved rows into update_apple_ads_bids / update_apple_ads_budgets.",
     input: { days, demo, campaignId: id.optional().describe("Limit to one campaign") },
-    run: async ({ days: d, demo: isDemo, campaignId }) => {
-      const dash = await getDashboard({ days: d as RangeDays, demo: isDemo });
+    run: async ({ days: d, demo: isDemo, campaignId }, { workspaceId }) => {
+      const dash = await getDashboard(workspaceId, { days: d as RangeDays, demo: isDemo });
       const match = <T extends { campaignId: string }>(rows: T[]) => (campaignId ? rows.filter((r) => r.campaignId === campaignId) : rows);
       return { demo: dash.demo, currency: dash.currency, days: dash.days, targetCpa: dash.targetCpa, bidSuggestions: match(dash.bidSuggestions), budgetSuggestions: match(dash.budgetSuggestions), cannibalization: dash.cannibalization };
     },
@@ -182,16 +182,16 @@ export const adsTools = [
       confirm,
       demo: demoPreview,
     },
-    run: async ({ changes, maxBid, dryRun: dr, confirm: cf, demo: isDemo }) => {
+    run: async ({ changes, maxBid, dryRun: dr, confirm: cf, demo: isDemo }, { workspaceId }) => {
       const over = changes.filter((c) => c.bid > maxBid);
       if (over.length) throw new HttpError(400, `Bids above maxBid ${maxBid}: ${over.map((c) => `${c.keywordId}→${c.bid}`).join(", ")}`);
-      const s = await getSnapshot({ days: 30, demo: isDemo });
+      const s = await getSnapshot(workspaceId, { days: 30, demo: isDemo });
       for (const c of changes) {
         const k = findKeyword(s, c.keywordId);
         if (k.campaignId !== c.campaignId || k.adGroupId !== c.adGroupId) throw new HttpError(400, `Keyword ${c.keywordId} belongs to campaign ${k.campaignId} / ad group ${k.adGroupId}`);
       }
-      const apply = !isDemo && shouldApply({ dryRun: dr, confirm: cf });
-      return withMode(await updateBids(changes, { dryRun: !apply, demo: isDemo, enforceCaps: true }), apply);
+      const apply = !isDemo && (await shouldApply(workspaceId, { dryRun: dr, confirm: cf }));
+      return withMode(await updateBids(workspaceId, changes, { dryRun: !apply, demo: isDemo, enforceCaps: true }), apply);
     },
   }),
   defineTool({
@@ -208,8 +208,8 @@ export const adsTools = [
       confirm,
       demo: demoPreview,
     },
-    run: async ({ changes, maxDailyBudget, dryRun: dr, confirm: cf, demo: isDemo }) => {
-      const campaigns = new Map((await listCampaigns({ days: 30, demo: isDemo })).map((c) => [c.id, c]));
+    run: async ({ changes, maxDailyBudget, dryRun: dr, confirm: cf, demo: isDemo }, { workspaceId }) => {
+      const campaigns = new Map((await listCampaigns(workspaceId, { days: 30, demo: isDemo })).map((c) => [c.id, c]));
       const problems: string[] = [];
       for (const ch of changes) {
         const c = campaigns.get(ch.campaignId);
@@ -219,8 +219,8 @@ export const adsTools = [
         if (ch.dailyBudget > maxDailyBudget) problems.push(`${c?.name ?? ch.campaignId}: ${ch.dailyBudget} exceeds maxDailyBudget ${maxDailyBudget}`);
       }
       if (problems.length) throw new HttpError(400, `Budget change blocked: ${problems.join("; ")}`);
-      const apply = !isDemo && shouldApply({ dryRun: dr, confirm: cf });
-      return withMode(await updateBudgets(changes, { dryRun: !apply, demo: isDemo }), apply);
+      const apply = !isDemo && (await shouldApply(workspaceId, { dryRun: dr, confirm: cf }));
+      return withMode(await updateBudgets(workspaceId, changes, { dryRun: !apply, demo: isDemo }), apply);
     },
   }),
   defineTool({
@@ -244,10 +244,10 @@ export const adsTools = [
       confirm,
       demo: demoPreview,
     },
-    run: async ({ entities, dryRun: dr, confirm: cf, demo: isDemo }) => {
+    run: async ({ entities, dryRun: dr, confirm: cf, demo: isDemo }, { workspaceId }) => {
       const list: EntityStatusChange[] = entities.map((e) => ({ ...e, status: "PAUSED" as const }));
-      const apply = !isDemo && shouldApply({ dryRun: dr, confirm: cf });
-      return withMode(await pauseEntities(list, { dryRun: !apply, demo: isDemo }), apply);
+      const apply = !isDemo && (await shouldApply(workspaceId, { dryRun: dr, confirm: cf }));
+      return withMode(await pauseEntities(workspaceId, list, { dryRun: !apply, demo: isDemo }), apply);
     },
   }),
   defineTool({
@@ -266,14 +266,14 @@ export const adsTools = [
       confirm,
       demo: demoPreview,
     },
-    run: async ({ campaignId, adGroupId, keywords, maxBid, dryRun: dr, confirm: cf, demo: isDemo }) => {
-      const s = await getSnapshot({ days: 30, demo: isDemo });
+    run: async ({ campaignId, adGroupId, keywords, maxBid, dryRun: dr, confirm: cf, demo: isDemo }, { workspaceId }) => {
+      const s = await getSnapshot(workspaceId, { days: 30, demo: isDemo });
       const group = s.adGroups.find((g) => g.id === adGroupId && g.campaignId === campaignId);
       if (!group) throw new HttpError(404, `Ad group ${adGroupId} not found in campaign ${campaignId}`);
       const over = keywords.filter((k) => (k.bid ?? group.defaultBid) > maxBid);
       if (over.length) throw new HttpError(400, `Bids above maxBid ${maxBid}: ${over.map((k) => `"${k.text}" ${k.bid ?? group.defaultBid}`).join(", ")}`);
-      const apply = !isDemo && shouldApply({ dryRun: dr, confirm: cf });
-      return withMode(await addKeywords({ campaignId, adGroupId, keywords: keywords.map((k) => ({ text: k.text, bid: k.bid ?? null, matchType: "EXACT" as const })) }, { dryRun: !apply, demo: isDemo }), apply);
+      const apply = !isDemo && (await shouldApply(workspaceId, { dryRun: dr, confirm: cf }));
+      return withMode(await addKeywords(workspaceId, { campaignId, adGroupId, keywords: keywords.map((k) => ({ text: k.text, bid: k.bid ?? null, matchType: "EXACT" as const })) }, { dryRun: !apply, demo: isDemo }), apply);
     },
   }),
   defineTool({
@@ -290,9 +290,9 @@ export const adsTools = [
       confirm,
       demo: demoPreview,
     },
-    run: async ({ campaignId, adGroupId, keywords, dryRun: dr, confirm: cf, demo: isDemo }) => {
-      const apply = !isDemo && shouldApply({ dryRun: dr, confirm: cf });
-      return withMode(await addNegativeKeywords({ campaignId, adGroupId: adGroupId ?? null, keywords: keywords.map((text) => ({ text, matchType: "EXACT" as const })) }, { dryRun: !apply, demo: isDemo }), apply);
+    run: async ({ campaignId, adGroupId, keywords, dryRun: dr, confirm: cf, demo: isDemo }, { workspaceId }) => {
+      const apply = !isDemo && (await shouldApply(workspaceId, { dryRun: dr, confirm: cf }));
+      return withMode(await addNegativeKeywords(workspaceId, { campaignId, adGroupId: adGroupId ?? null, keywords: keywords.map((text) => ({ text, matchType: "EXACT" as const })) }, { dryRun: !apply, demo: isDemo }), apply);
     },
   }),
 ];
@@ -325,7 +325,7 @@ function planningTools() {
       layer: "ads",
       description: "Build a structured plan of exact match Search Results campaigns (one per country, one ad group each) with names, budgets, bids, keywords and warnings, without changing anything. Review it, then pass the same arguments to create_apple_ads_campaigns.",
       input: { ...planInput(), demo },
-      run: ({ demo: isDemo, ...args }) => planCampaigns(toPlanInput(args), { demo: isDemo }),
+      run: ({ demo: isDemo, ...args }, { workspaceId }) => planCampaigns(workspaceId, toPlanInput(args), { demo: isDemo }),
     }),
     defineTool({
       name: "create_apple_ads_campaigns",
@@ -335,11 +335,11 @@ function planningTools() {
       description:
         "Create the exact match campaigns described by plan_apple_ads_campaigns (paused by default). Requires maxDailyBudget, which the per-campaign daily budget may not exceed. Dry run by default; apply only after user approval with dryRun: false and confirm: true.",
       input: { ...planInput(), maxDailyBudget: money.describe("Hard ceiling for each campaign's daily budget"), dryRun, confirm, demo: demoPreview },
-      run: async ({ maxDailyBudget, dryRun: dr, confirm: cf, demo: isDemo, ...args }) => {
+      run: async ({ maxDailyBudget, dryRun: dr, confirm: cf, demo: isDemo, ...args }, { workspaceId }) => {
         if (args.dailyBudget > maxDailyBudget) throw new HttpError(400, `dailyBudget ${args.dailyBudget} exceeds maxDailyBudget ${maxDailyBudget}`);
-        const plan = await planCampaigns(toPlanInput(args), { demo: isDemo });
-        const apply = !isDemo && shouldApply({ dryRun: dr, confirm: cf });
-        return { plan, ...withMode(await createCampaigns(plan, { dryRun: !apply, demo: isDemo }), apply) };
+        const plan = await planCampaigns(workspaceId, toPlanInput(args), { demo: isDemo });
+        const apply = !isDemo && (await shouldApply(workspaceId, { dryRun: dr, confirm: cf }));
+        return { plan, ...withMode(await createCampaigns(workspaceId, plan, { dryRun: !apply, demo: isDemo }), apply) };
       },
     }),
   ];

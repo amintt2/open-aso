@@ -6,7 +6,7 @@ import SettingsCard from "@/components/settings/settings-card";
 import ToggleRow from "./toggle-row";
 
 const GUARDS = [
-  "Keyword tracking changes (add, remove, notes) apply directly to your local workspace.",
+  "Keyword tracking changes (add, remove, notes) apply directly to this workspace.",
   "App Store Connect and Apple Ads changes are dry runs by default and return a before/after diff.",
   "Applying a change needs dryRun: false and confirm: true in the same call.",
   "Metadata is checked against the 30 / 30 / 100 character limits before anything is sent.",

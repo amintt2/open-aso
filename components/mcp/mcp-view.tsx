@@ -61,8 +61,8 @@ export default function McpView() {
   }
 
   async function clear() {
-    if (!window.confirm("Remove the token? Only localhost clients will be able to connect.")) return;
-    if (!(await run(() => api("/api/mcp/settings/token", { method: "DELETE" }), "Token removed"))) return;
+    if (!window.confirm("Revoke the token? Every client using it stops working immediately.")) return;
+    if (!(await run(() => api("/api/mcp/settings/token", { method: "DELETE" }), "Token revoked"))) return;
     setToken(null);
     mutate();
   }
@@ -92,10 +92,11 @@ export default function McpView() {
           </nav>
           {settings ? (
             <>
-              <ServerCard url={url} enabled={enabled} status={status} saving={busy} onToggle={(next) => update({ enabled: next }, next ? "MCP server enabled" : "MCP server disabled")} />
-              <AccessCard tokenSet={settings.tokenSet} passwordProtected={settings.passwordProtected} revealed={token} busy={busy} onRotate={rotate} onClear={clear} />
-              <WritesCard allowWrites={settings.allowWrites} saving={busy} onToggle={(next) => update({ allowWrites: next }, next ? "Write tools allowed" : "Write tools blocked")} />
-              <SetupCard url={url} tokenRequired={settings.tokenSet || settings.passwordProtected} token={token} />
+              {!settings.canManage && <p className="caption-style text-subtle">Only workspace owners and admins can change MCP settings or tokens.</p>}
+              <ServerCard url={url} enabled={enabled} status={status} saving={busy || !settings.canManage} onToggle={(next) => update({ enabled: next }, next ? "MCP server enabled" : "MCP server disabled")} />
+              <AccessCard tokenSet={settings.tokenSet} hint={settings.tokenHint} lastUsedAt={settings.tokenLastUsedAt} revealed={token} busy={busy} canManage={settings.canManage} onRotate={rotate} onClear={clear} />
+              <WritesCard allowWrites={settings.allowWrites} saving={busy || !settings.canManage} onToggle={(next) => update({ allowWrites: next }, next ? "Write tools allowed" : "Write tools blocked")} />
+              <SetupCard url={url} tokenRequired token={token} />
               <ToolsCard layers={settings.layers} tools={settings.tools} allowWrites={settings.allowWrites} />
             </>
           ) : (

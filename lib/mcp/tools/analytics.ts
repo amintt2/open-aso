@@ -13,8 +13,8 @@ const input = {
 
 type Args = { appId?: number; days: number; includeSandbox: boolean; demo: "never" | "auto" | "only" };
 
-function query(a: Args): AnalyticsQuery {
-  if (a.appId) getApp(a.appId);
+async function query(workspaceId: string, a: Args): Promise<AnalyticsQuery> {
+  if (a.appId) await getApp(workspaceId, a.appId);
   return { appId: a.appId ?? null, days: a.days, includeSandbox: a.includeSandbox, demo: a.demo };
 }
 
@@ -25,7 +25,7 @@ export const analyticsTools = [
     layer: "analytics",
     description: "Installs, trials, purchases, gross/net revenue, refunds, paying users and trial conversion for a window versus the previous window, plus a daily series. Data comes from the Open ASO SDK and RevenueCat/Superwall webhooks.",
     input,
-    run: (a) => getOverview(query(a)),
+    run: async (a, { workspaceId }) => getOverview(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_analytics_sources",
@@ -33,7 +33,7 @@ export const analyticsTools = [
     layer: "analytics",
     description: "Installs, trials, payers, revenue, trial rate and conversion split by source (Apple Ads vs organic), with Apple Ads campaign breakdown when attribution is available.",
     input,
-    run: (a) => getSources(query(a)),
+    run: async (a, { workspaceId }) => getSources(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_analytics_geography",
@@ -41,7 +41,7 @@ export const analyticsTools = [
     layer: "analytics",
     description: "Installs, trials, payers, revenue and revenue per install by country, plus top cities.",
     input,
-    run: (a) => getGeography(query(a)),
+    run: async (a, { workspaceId }) => getGeography(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_analytics_retention",
@@ -49,7 +49,7 @@ export const analyticsTools = [
     layer: "analytics",
     description: "Install cohorts with day 1, day 7 and day 30 retention (share of users active again) and the averages across cohorts.",
     input,
-    run: (a) => getRetention(query(a)),
+    run: async (a, { workspaceId }) => getRetention(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_keyword_roas",
@@ -57,6 +57,6 @@ export const analyticsTools = [
     layer: "analytics",
     description: "Per Apple Ads keyword: spend, taps, Apple-reported and SDK-attributed installs, trials, payers, revenue, CPI, trial rate and ROAS, plus totals. Use it to decide which keywords earn back their spend.",
     input,
-    run: (a) => getKeywordRoas(query(a)),
+    run: async (a, { workspaceId }) => getKeywordRoas(workspaceId, await query(workspaceId, a)),
   }),
 ];

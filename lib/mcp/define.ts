@@ -11,15 +11,17 @@ export const LAYERS: { id: ToolLayer; label: string; description: string }[] = [
 
 export type ToolInfo = { name: string; title: string; layer: ToolLayer; write: boolean; description: string };
 
+export type ToolContext = { workspaceId: string };
+
 export type McpTool = ToolInfo & {
   input: z.ZodRawShape;
-  run: (args: Record<string, unknown>) => unknown;
+  run: (args: Record<string, unknown>, ctx: ToolContext) => unknown;
 };
 
 type ToolSpec<S extends z.ZodRawShape> = Omit<ToolInfo, "write"> & {
   write?: boolean;
   input: S;
-  run: (args: z.output<z.ZodObject<S>>) => unknown;
+  run: (args: z.output<z.ZodObject<S>>, ctx: ToolContext) => unknown;
 };
 
 export function defineTool<S extends z.ZodRawShape>(spec: ToolSpec<S>): McpTool {

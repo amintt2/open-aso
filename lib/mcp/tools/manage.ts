@@ -58,16 +58,16 @@ export const manageTools = [
     description:
       "Start tracking up to 25 search terms for an app in one storefront, then analyze them (popularity, difficulty, rank). Already-tracked terms are kept. Requires write tools to be enabled.",
     input: { appId, terms: z.array(z.string().trim().min(1).max(100)).min(1).max(25), country: optionalCountry },
-    run: async ({ appId: id, terms, country: c }) => {
-      requireWrites();
-      const code = countryFor(id, c);
-      const before = new Set(listKeywords(id, code).map((k) => k.term));
-      const added = addKeywords(id, terms, code);
+    run: async ({ appId: id, terms, country: c }, { workspaceId }) => {
+      await requireWrites(workspaceId);
+      const code = await countryFor(workspaceId, id, c);
+      const before = new Set((await listKeywords(workspaceId, id, code)).map((k) => k.term));
+      const added = await addKeywords(workspaceId, id, terms, code);
       const fresh = added.filter((k) => !k.lastRefreshedAt);
-      const refreshed = await refreshKeywords(fresh.map((k) => k.id));
+      const refreshed = await refreshKeywords(workspaceId, fresh.map((k) => k.id));
       const failed = refreshed.filter((r) => !r.ok);
       const ids = new Set(added.map((k) => k.id));
-      const keywords = listKeywords(id, code).filter((k) => ids.has(k.id));
+      const keywords = (await listKeywords(workspaceId, id, code)).filter((k) => ids.has(k.id));
       return {
         appId: id,
         country: code,
@@ -86,14 +86,14 @@ export const manageTools = [
     write: true,
     description: "Stop tracking keywords (deletes them and their history). All ids must belong to the given app. Requires write tools to be enabled.",
     input: { appId, keywordIds: z.array(z.number().int().positive()).min(1).max(200).describe("Keyword ids from get_app_keywords") },
-    run: ({ appId: id, keywordIds }) => {
-      requireWrites();
-      getApp(id);
-      const owned = new Map(listKeywords(id).map((k) => [k.id, k]));
+    run: async ({ appId: id, keywordIds }, { workspaceId }) => {
+      await requireWrites(workspaceId);
+      await getApp(workspaceId, id);
+      const owned = new Map((await listKeywords(workspaceId, id)).map((k) => [k.id, k]));
       const foreign = keywordIds.filter((k) => !owned.has(k));
       if (foreign.length) throw new HttpError(400, `These keyword ids do not belong to app ${id}: ${foreign.join(", ")}. Nothing was removed.`);
       const unique = [...new Set(keywordIds)];
-      deleteKeywords(unique);
+      await deleteKeywords(workspaceId, unique);
       return { appId: id, removed: unique.map((k) => ({ id: k, term: owned.get(k)?.term, country: owned.get(k)?.country })) };
     },
   }),
@@ -108,10 +108,10 @@ export const manageTools = [
       note: z.string().max(2000).nullable().describe("Note text, or null to clear"),
       liked: z.boolean().optional(),
     },
-    run: ({ keywordId, note, liked }) => {
-      requireWrites();
-      getKeyword(keywordId);
-      return compactKeyword(updateKeyword(keywordId, { notes: note?.trim() ? note.trim() : null, liked }));
+    run: async ({ keywordId, note, liked }, { workspaceId }) => {
+      await requireWrites(workspaceId);
+      await getKeyword(workspaceId, keywordId);
+      return compactKeyword(await updateKeyword(workspaceId, keywordId, { notes: note?.trim() ? note.trim() : null, liked }));
     },
   }),
   defineTool({
@@ -125,8 +125,8 @@ export const manageTools = [
       locale: z.string().trim().min(2).max(10).optional().describe("ASC locale such as en-US or de-DE. Omit for all locales."),
       includeDescription: z.boolean().default(false).describe("Include full description and what's new text"),
     },
-    run: async ({ appId: id, locale, includeDescription }) => {
-      const meta = await getMetadata(id, locale);
+    run: async ({ appId: id, locale, includeDescription }, { workspaceId }) => {
+      const meta = await getMetadata(workspaceId, id, locale);
       return {
         ascAppId: meta.ascAppId,
         appName: meta.appName,
@@ -155,7 +155,7 @@ export const manageTools = [
       dryRun,
       confirm,
     },
-    run: async (input) => {
+    run: async (input, { workspaceId }) => {
       const fields = (Object.keys(FIELD_MAP) as EditableField[]).filter((f) => input[f] !== undefined);
       if (!fields.length) throw new HttpError(400, "Provide at least one of title, subtitle or keywords");
       const next = Object.fromEntries(fields.map((f) => [f, (input[f] as string).trim()])) as Partial<Record<EditableField, string>>;
@@ -163,7 +163,7 @@ export const manageTools = [
         const max = METADATA_LIMITS[FIELD_MAP[f]];
         if (chars(next[f]) > max) throw new HttpError(422, `${f} is ${chars(next[f])} characters; the limit is ${max}`);
       }
-      const meta = await getAppMetadata(input.appId, { refresh: true });
+      const meta = await getAppMetadata(workspaceId, input.appId, { refresh: true });
       const current = meta.localizations.find((l) => sameLocale(l.locale, input.locale)) ?? null;
       const diff = fields.map((f) => {
         const before = current?.[FIELD_MAP[f]] ?? null;
@@ -182,10 +182,10 @@ export const manageTools = [
       const changed = diff.filter((d) => d.changed);
       const summary = { appId: input.appId, locale: current?.locale ?? input.locale, localeExists: !!current, diff, warnings, blockers };
       if (!changed.length) return { ...summary, applied: false, message: "Nothing to change." };
-      if (!shouldApply(input)) return { ...summary, applied: false, dryRun: true, message: blockers.length ? "Dry run: this change would be rejected." : "Dry run. Confirm with the user, then call again with dryRun: false and confirm: true." };
+      if (!(await shouldApply(workspaceId, input))) return { ...summary, applied: false, dryRun: true, message: blockers.length ? "Dry run: this change would be rejected." : "Dry run. Confirm with the user, then call again with dryRun: false and confirm: true." };
       if (blockers.length) throw new HttpError(409, blockers.join(" "));
       const patch: MetadataPatch = Object.fromEntries(changed.map((d) => [FIELD_MAP[d.field], d.after ?? ""]));
-      const result = await updateMetadata(input.appId, input.locale, patch);
+      const result = await updateMetadata(workspaceId, input.appId, input.locale, patch);
       return { ...summary, applied: true, result: localeView(result, false) };
     },
   }),
@@ -195,8 +195,8 @@ export const manageTools = [
     layer: "manage",
     description: "The public App Store product page as users see it in a storefront: title, subtitle (when tracked), full description, release notes, rating, price and iPhone/iPad screenshot URLs.",
     input: { appId: appId.optional(), trackId: trackId.optional(), country: optionalCountry },
-    run: async (input) => {
-      const tracked = input.appId ? getApp(input.appId) : input.trackId ? findAppByTrackId(input.trackId) : undefined;
+    run: async (input, { workspaceId }) => {
+      const tracked = input.appId ? await getApp(workspaceId, input.appId) : input.trackId ? await findAppByTrackId(workspaceId, input.trackId) : undefined;
       const id = input.trackId ?? tracked?.trackId;
       if (!id) throw new HttpError(400, "Provide appId or trackId");
       const code = input.country ?? tracked?.primaryCountry ?? "us";
@@ -227,7 +227,7 @@ export const manageTools = [
     layer: "manage",
     description: "Subscriptions and in-app purchases defined in App Store Connect for an app. Use the returned id and kind with get_product_prices. Read-only.",
     input: { appId },
-    run: async ({ appId: id }) => ({ appId: id, products: await listProducts(id) }),
+    run: async ({ appId: id }, { workspaceId }) => ({ appId: id, products: await listProducts(workspaceId, id) }),
   }),
   defineTool({
     name: "get_product_prices",
@@ -240,8 +240,8 @@ export const manageTools = [
       productId: z.string().trim().min(1).describe("App Store Connect resource id from list_products (the id field, not the product identifier)"),
       territories: z.array(z.string().trim().min(2).max(3)).max(200).optional().describe("Filter by country codes, alpha-2 (us) or alpha-3 (USA)"),
     },
-    run: async ({ appId: id, kind, productId, territories }) => {
-      const prices = await getProductPrices(id, kind, productId);
+    run: async ({ appId: id, kind, productId, territories }, { workspaceId }) => {
+      const prices = await getProductPrices(workspaceId, id, kind, productId);
       const match = territoryMatcher(territories);
       return { ...prices, current: prices.current.filter(match), upcoming: prices.upcoming.filter(match) };
     },

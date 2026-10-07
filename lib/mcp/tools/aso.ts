@@ -53,9 +53,9 @@ function sortKeywords(list: TrackedKeyword[], sort: (typeof KEYWORD_SORTS)[numbe
   }
 }
 
-function resolveTrackId(input: { appId?: number; trackId?: number }) {
+async function resolveTrackId(workspaceId: string, input: { appId?: number; trackId?: number }) {
   if (input.trackId) return input.trackId;
-  if (input.appId) return getApp(input.appId).trackId;
+  if (input.appId) return (await getApp(workspaceId, input.appId)).trackId;
   throw new HttpError(400, "Provide appId or trackId");
 }
 
@@ -67,8 +67,8 @@ export const asoTools = [
     description:
       "List the apps tracked in Open ASO with their Open ASO id (appId, used by most tools), App Store trackId, primary country, tracked keyword count and whether they are linked to App Store Connect. Call this first.",
     input: {},
-    run: () =>
-      listApps().map((a) => ({
+    run: async (_args, { workspaceId }) =>
+      (await listApps(workspaceId)).map((a) => ({
         appId: a.id,
         trackId: a.trackId,
         name: a.name,
@@ -97,9 +97,9 @@ export const asoTools = [
       sort: z.enum(KEYWORD_SORTS).default("opportunity").describe("Sort order (default opportunity, highest first)"),
       limit: limit(100, 500),
     },
-    run: ({ appId: id, country: c, sort, limit: n }) => {
-      getApp(id);
-      const all = listKeywords(id, c);
+    run: async ({ appId: id, country: c, sort, limit: n }, { workspaceId }) => {
+      await getApp(workspaceId, id);
+      const all = await listKeywords(workspaceId, id, c);
       return { appId: id, country: c ?? "all", total: all.length, note: ESTIMATE_NOTE, keywords: sortKeywords(all, sort).slice(0, n).map(compactKeyword) };
     },
   }),
@@ -114,8 +114,8 @@ export const asoTools = [
       terms: z.array(z.string().trim().min(1).max(100)).min(1).max(20).describe("Search terms to check"),
       country,
     },
-    run: async (input) => {
-      const id = resolveTrackId(input);
+    run: async (input, { workspaceId }) => {
+      const id = await resolveTrackId(workspaceId, input);
       return { trackId: id, country: input.country, rankings: await rankingsFor(id, input.terms, input.country) };
     },
   }),
@@ -126,7 +126,7 @@ export const asoTools = [
     description:
       "Full analysis of one search term in one storefront: popularity, difficulty (with breakdown), opportunity, estimated monthly searches and downloads, targeting label, the top 10 ranking apps and, when trackId is given, that app's rank.",
     input: { term: z.string().trim().min(1).max(100), country, trackId: trackId.optional().describe("Optional App Store id whose rank to report") },
-    run: async ({ term, country: c, trackId: t }) => ({ ...(await analyzeKeyword(term, c, t)), note: ESTIMATE_NOTE }),
+    run: async ({ term, country: c, trackId: t }, { workspaceId }) => ({ ...(await analyzeKeyword(term, c, t, workspaceId)), note: ESTIMATE_NOTE }),
   }),
   defineTool({
     name: "search_app_store",
@@ -145,8 +145,8 @@ export const asoTools = [
     layer: "aso",
     description: "Public App Store details for any app (rating, genre, price, version, size, languages, short description) plus modeled monthly download and revenue estimates.",
     input: { trackId, country },
-    run: async ({ trackId: t, country: c }) => {
-      const d = await exploreApp(t, c);
+    run: async ({ trackId: t, country: c }, { workspaceId }) => {
+      const d = await exploreApp(workspaceId, t, c);
       return {
         ...compactStoreApp(d.app),
         description: truncate(d.app.description, 800),
@@ -178,9 +178,9 @@ export const asoTools = [
     description:
       "Competitors saved for an app with live rating, version, estimated downloads/revenue, how many tracked keywords they share and how many of those they outrank the app on. Use the competitor id with get_competitor_comparison.",
     input: { appId, country: optionalCountry },
-    run: async ({ appId: id, country: c }) => {
-      const code = countryFor(id, c);
-      return { appId: id, country: code, note: ESTIMATE_NOTE, competitors: await listCompetitors(id, code) };
+    run: async ({ appId: id, country: c }, { workspaceId }) => {
+      const code = await countryFor(workspaceId, id, c);
+      return { appId: id, country: code, note: ESTIMATE_NOTE, competitors: await listCompetitors(workspaceId, id, code) };
     },
   }),
   defineTool({
@@ -190,9 +190,9 @@ export const asoTools = [
     description:
       "Keyword-by-keyword rank comparison between an app and one saved competitor across the app's tracked keywords, with counts of where each side leads and keywords only the competitor ranks for.",
     input: { competitorId: z.number().int().positive().describe("Competitor id from list_competitors"), country: optionalCountry },
-    run: async ({ competitorId, country: c }) => {
-      const competitor = await getCompetitor(competitorId, c);
-      const comparison = await compareKeywords(competitorId, c ?? getApp(competitor.appId).primaryCountry);
+    run: async ({ competitorId, country: c }, { workspaceId }) => {
+      const competitor = await getCompetitor(workspaceId, competitorId, c);
+      const comparison = await compareKeywords(workspaceId, competitorId, c ?? (await getApp(workspaceId, competitor.appId)).primaryCountry);
       return { competitor: { id: competitor.id, appId: competitor.appId, trackId: competitor.trackId, name: competitor.name }, ...comparison };
     },
   }),
@@ -202,9 +202,9 @@ export const asoTools = [
     layer: "aso",
     description: "Daily history (popularity, difficulty, rank) for one tracked keyword. Keyword ids come from get_app_keywords.",
     input: { keywordId: z.number().int().positive() },
-    run: ({ keywordId }) => {
-      const k = getKeyword(keywordId);
-      return { keyword: { id: k.id, appId: k.appId, term: k.term, country: k.country, position: k.position }, history: keywordHistory(keywordId) };
+    run: async ({ keywordId }, { workspaceId }) => {
+      const k = await getKeyword(workspaceId, keywordId);
+      return { keyword: { id: k.id, appId: k.appId, term: k.term, country: k.country, position: k.position }, history: await keywordHistory(workspaceId, keywordId) };
     },
   }),
   defineTool({
@@ -220,12 +220,12 @@ export const asoTools = [
       useAi: z.boolean().default(true).describe("Include AI ideas when an Anthropic key is configured"),
       limit: limit(40, 100),
     },
-    run: async ({ appId: id, country: c, refresh, useAi, limit: n }) => {
-      const code = countryFor(id, c);
-      const overview = suggestionsOverview(id, code);
+    run: async ({ appId: id, country: c, refresh, useAi, limit: n }, { workspaceId }) => {
+      const code = await countryFor(workspaceId, id, c);
+      const overview = await suggestionsOverview(workspaceId, id, code);
       let result = overview.last;
       if (!result || refresh) {
-        const outcome = await waitForJob(startSuggestions(id, code, useAi), JOB_WAIT_MS);
+        const outcome = await waitForJob(await startSuggestions(workspaceId, id, code, useAi), JOB_WAIT_MS);
         if (!outcome.done) return { status: "running", message: "Still generating suggestions. Call get_keyword_suggestions again in a minute (refresh: false).", job: outcome.job };
         result = outcome.result;
       }
@@ -239,7 +239,7 @@ export const asoTools = [
     description:
       "Actionable findings about an app's title and subtitle versus its tracked keywords: unused characters, duplicated words, high-opportunity keywords missing from the title/subtitle, and keywords that are working.",
     input: { appId, country: optionalCountry },
-    run: ({ appId: id, country: c }) => metadataInsights(id, countryFor(id, c)),
+    run: async ({ appId: id, country: c }, { workspaceId }) => metadataInsights(workspaceId, id, await countryFor(workspaceId, id, c)),
   }),
   defineTool({
     name: "get_country_opportunities",
@@ -252,11 +252,12 @@ export const asoTools = [
       term: z.string().trim().min(1).max(100),
       countries: z.array(country).min(1).max(66).optional().describe("Storefront codes to scan (default: 20 largest markets)"),
     },
-    run: async ({ appId: id, term, countries }) => {
+    run: async ({ appId: id, term, countries }, { workspaceId }) => {
+      await getApp(workspaceId, id);
       const list = countries ?? topMarkets(20);
-      const outcome = await waitForJob(startScan(id, term, list), JOB_WAIT_MS);
+      const outcome = await waitForJob(await startScan(workspaceId, id, term, list), JOB_WAIT_MS);
       if (!outcome.done) {
-        const last = lastScan(id).last;
+        const last = (await lastScan(workspaceId, id)).last;
         return { status: "running", message: "Scan still running. Call again with the same arguments in a minute.", job: outcome.job, previous: last && last.term === normalizeTerm(term) ? last : null };
       }
       return { status: "done", note: ESTIMATE_NOTE, ...outcome.result };

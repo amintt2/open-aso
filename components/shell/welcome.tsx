@@ -14,7 +14,7 @@ export default function Welcome() {
       <EmptyState
         icon={Sparkles}
         title="Track your first app"
-        description="Add an app from the App Store to research keywords, track rankings, watch competitors and find country opportunities. Everything runs locally on your machine."
+        description="Add an app from the App Store to research keywords, track rankings, watch competitors and find country opportunities. Everyone in this workspace sees the same apps and data."
         action={
           <Button variant="primary" size="md" onClick={() => setAddAppOpen(true)}>
             <Plus aria-hidden className="size-3.5" />

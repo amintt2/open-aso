@@ -12,12 +12,12 @@ export default function ServerCard({ url, enabled, status, saving, onToggle }: {
     <SettingsCard
       id="server"
       title="Server"
-      description="Expose Open ASO to AI assistants over the Model Context Protocol. Clients connect to one Streamable HTTP endpoint; every tool runs on this machine against your local data."
+      description="Expose this workspace to AI assistants over the Model Context Protocol. Clients connect to one Streamable HTTP endpoint with this workspace's token and only see this workspace's apps, keywords and integrations."
     >
       <ToggleRow
         id="mcp-enabled"
         label="Enable MCP server"
-        description={enabled ? "The endpoint accepts authenticated requests." : "The endpoint answers every request with an error until enabled."}
+        description={enabled ? "Requests with this workspace's token are accepted." : "Requests with this workspace's token are rejected until enabled."}
         checked={enabled}
         disabled={saving}
         onChange={onToggle}

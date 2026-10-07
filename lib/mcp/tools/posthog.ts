@@ -21,8 +21,8 @@ const input = {
 
 type Args = { appId: number; days: number; refresh: boolean };
 
-function query(a: Args): PosthogQuery {
-  getApp(a.appId);
+async function query(workspaceId: string, a: Args): Promise<PosthogQuery> {
+  await getApp(workspaceId, a.appId);
   return { appId: a.appId, days: a.days, refresh: a.refresh };
 }
 
@@ -33,7 +33,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "Product analytics from PostHog for one app: new users, DAU/WAU and events per day versus the previous window, plus the top events with counts and unique users.",
     input,
-    run: (a) => getPosthogOverview(query(a)),
+    run: async (a, { workspaceId }) => getPosthogOverview(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_posthog_funnel",
@@ -41,7 +41,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "Ordered per-user funnel from PostHog: first open → onboarding started → onboarding completed → paywall viewed → purchase started → purchase success, with conversion and drop-off per step and the purchase-cancel rate. Steps without mapped events are reported as missing.",
     input,
-    run: (a) => getPosthogFunnel(query(a)),
+    run: async (a, { workspaceId }) => getPosthogFunnel(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_posthog_retention",
@@ -49,7 +49,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "D1/D7/D30 retention cohorts from PostHog based on first open and app-open events.",
     input,
-    run: (a) => getPosthogRetention(query(a)),
+    run: async (a, { workspaceId }) => getPosthogRetention(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_posthog_geography",
@@ -57,7 +57,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "New and active users by country (GeoIP) and top cities from PostHog. Useful next to keyword rankings per storefront.",
     input,
-    run: (a) => getPosthogGeography(query(a)),
+    run: async (a, { workspaceId }) => getPosthogGeography(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_posthog_versions",
@@ -65,7 +65,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "Users, new users and events per app version from PostHog, with App Store release dates when known.",
     input,
-    run: (a) => getPosthogVersions(query(a)),
+    run: async (a, { workspaceId }) => getPosthogVersions(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_posthog_experiments",
@@ -73,7 +73,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "Feature flag / experiment exposures by flag and variant with downstream paywall-view and purchase-success rates per variant.",
     input,
-    run: (a) => getPosthogExperiments(query(a)),
+    run: async (a, { workspaceId }) => getPosthogExperiments(workspaceId, await query(workspaceId, a)),
   }),
   defineTool({
     name: "get_posthog_new_users",
@@ -81,7 +81,7 @@ export const posthogTools = [
     layer: "analytics",
     description: "Daily new users (first opens) from PostHog for one app, optionally filtered to one storefront country (ISO alpha-2), to compare against keyword ranking changes.",
     input: { ...input, country: z.string().length(2).optional().describe("ISO country code, e.g. us, fr") },
-    run: (a) => getPosthogNewUsers(query(a), a.country ?? null),
+    run: async (a, { workspaceId }) => getPosthogNewUsers(workspaceId, await query(workspaceId, a), a.country ?? null),
   }),
   defineTool({
     name: "get_posthog_events",
@@ -89,6 +89,6 @@ export const posthogTools = [
     layer: "analytics",
     description: "The last 100 PostHog events for one app (time, event, user, SDK, country, version) from the past 7 days.",
     input: { appId: input.appId, refresh: input.refresh },
-    run: (a) => getPosthogEvents({ appId: a.appId, days: 7, refresh: a.refresh }),
+    run: async (a, { workspaceId }) => getPosthogEvents(workspaceId, await query(workspaceId, { appId: a.appId, days: 7, refresh: a.refresh })),
   }),
 ];

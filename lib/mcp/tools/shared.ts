@@ -21,8 +21,9 @@ export const limit = (fallback: number, max: number) => z.number().int().min(1).
 export const dryRun = z.boolean().default(true).describe("Preview only (default true). Set false together with confirm: true to apply.");
 export const confirm = z.boolean().default(false).describe("Must be true to apply a change when dryRun is false.");
 
-export function countryFor(id: number, value: string | undefined) {
-  return value ?? getApp(id).primaryCountry;
+export async function countryFor(workspaceId: string, id: number, value: string | undefined) {
+  const app = await getApp(workspaceId, id);
+  return value ?? app.primaryCountry;
 }
 
 export function topMarkets(n: number) {
@@ -31,14 +32,14 @@ export function topMarkets(n: number) {
     .slice(0, n);
 }
 
-export function requireWrites() {
-  if (!writesAllowed()) throw new HttpError(403, "Write tools are disabled. Ask the user to enable “Allow write tools” in Open ASO → MCP Server.");
+export async function requireWrites(workspaceId: string) {
+  if (!(await writesAllowed(workspaceId))) throw new HttpError(403, "Write tools are disabled. Ask a workspace admin to enable “Allow write tools” in Open ASO → MCP Server.");
 }
 
-export function shouldApply(input: { dryRun: boolean; confirm: boolean }) {
+export async function shouldApply(workspaceId: string, input: { dryRun: boolean; confirm: boolean }) {
   if (input.dryRun) return false;
   if (!input.confirm) throw new HttpError(400, "Refusing to apply: set confirm: true together with dryRun: false after reviewing the dry-run diff with the user.");
-  requireWrites();
+  await requireWrites(workspaceId);
   return true;
 }
 
@@ -48,6 +49,7 @@ export function compactKeyword(k: TrackedKeyword) {
     term: k.term,
     country: k.country,
     popularity: k.popularity,
+    popularitySource: k.popularitySource,
     difficulty: k.difficulty,
     opportunity: k.opportunity,
     position: k.position,
