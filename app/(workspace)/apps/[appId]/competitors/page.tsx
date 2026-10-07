@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import CompetitorsPage from "@/components/competitors/competitors-page";
 
 export default function Page() {
-  return <ComingSoon title="Competitors" />;
+  return <CompetitorsPage />;
 }
