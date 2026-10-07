@@ -22,7 +22,8 @@ export type SettingKey =
   | "posthog.host"
   | "posthog.projectId"
   | "posthog.apiKey"
-  | "worker.shared";
+  | "worker.shared"
+  | "impact.searchShare";
 
 export const SECRET_KEYS: SettingKey[] = [
   "asc.privateKey",
