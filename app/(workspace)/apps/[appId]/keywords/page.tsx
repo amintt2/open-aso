@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import KeywordsView from "@/components/keywords/keywords-view";
 
 export default function Page() {
-  return <ComingSoon title="Keywords" />;
+  return <KeywordsView />;
 }
