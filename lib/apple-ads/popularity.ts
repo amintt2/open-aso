@@ -276,6 +276,24 @@ export async function testPlatform(term = "photo editor", country = "us") {
   return { term, country, popularity: found.get(normalizeTerm(term)) ?? null, countryFilter: await countryFilterMode() };
 }
 
+export async function probePlatform(path: string, payload?: unknown) {
+  if (!/^\/(suggestions|insights)\/[\w/-]+$|^\/(acls|me)$/.test(path)) throw new HttpError(400, "Probe path not allowed");
+  const source = await platformSource();
+  if (!source) throw new HttpError(409, "Add the platform Apple Ads key first");
+  const headers: Record<string, string> = { Authorization: `Bearer ${await token(source)}`, Accept: "application/json" };
+  if (payload !== undefined) headers["Content-Type"] = "application/json";
+  if (!/^\/(acls|me)$/.test(path)) headers["X-AP-Context"] = `adAccountId=${await adAccount(source)}`;
+  const res = await fetch(`${BASE}${path}`, {
+    method: payload === undefined ? "GET" : "POST",
+    headers,
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20000),
+  });
+  const text = await res.text();
+  return { status: res.status, body: text.slice(0, 4000) };
+}
+
 export async function clearPlatform() {
   for (const k of ["ads.clientId", "ads.teamId", "ads.keyId", "ads.privateKey", "ads.publicKey", "ads.adAccountId", "ads.countryFilter", "ads.lastError", "ads.lastOkAt"] as const)
     await setPlatformSetting(k, null);
