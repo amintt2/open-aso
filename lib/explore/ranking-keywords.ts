@@ -1,7 +1,6 @@
 import { lookupApp, searchApps, searchHints, type StoreApp } from "@/lib/appstore/itunes";
 import { getCountry } from "@/lib/appstore/countries";
 import { popularity } from "@/lib/aso/analyze";
-import { findAppByTrackId } from "@/lib/aso/apps";
 import { normalizeTerm } from "@/lib/aso/scoring";
 import { cached, HOUR } from "@/lib/server/cache";
 import { HttpError } from "@/lib/server/http";
@@ -45,13 +44,13 @@ async function buildCandidates(app: StoreApp, subtitle: string | null, country: 
   return [...map.values()].sort((a, b) => b.weight - a.weight).slice(0, MAX_CANDIDATES);
 }
 
-export function discoverRankingKeywords(trackId: number, country: string): Promise<RankingKeyword[]> {
+export function discoverRankingKeywords(trackId: number, country: string, subtitle?: string | null): Promise<RankingKeyword[]> {
   const c = getCountry(country).code;
-  return cached(`explore:ranking:v2:${c}:${trackId}`, 12 * HOUR, async () => {
+  const sub = subtitle ? normalizeTerm(subtitle).slice(0, 60) : "";
+  return cached(`explore:ranking:v3:${c}:${trackId}:${sub}`, 12 * HOUR, async () => {
     const app = await lookupApp(trackId, c);
     if (!app) throw new HttpError(404, "App not available in this storefront");
-    const subtitle = findAppByTrackId(trackId)?.subtitle ?? null;
-    const candidates = await buildCandidates(app, subtitle, c);
+    const candidates = await buildCandidates(app, sub || null, c);
     const positions = await pool(candidates, 6, async (cand) => {
       const results = await searchApps(cand.term, c, 200).catch(() => [] as StoreApp[]);
       const idx = results.findIndex((r) => r.trackId === trackId);

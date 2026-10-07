@@ -16,7 +16,7 @@ export async function exploreSearch(query: string, country: string): Promise<Sto
   return searchApps(parsed.term, c, 60);
 }
 
-export async function exploreApp(trackId: number, country: string): Promise<ExploreAppDetail> {
+export async function exploreApp(workspaceId: string, trackId: number, country: string): Promise<ExploreAppDetail> {
   const c = getCountry(country).code;
   const app = await lookupApp(trackId, c);
   if (!app) throw new HttpError(404, "This app is not available in the selected storefront");
@@ -26,7 +26,7 @@ export async function exploreApp(trackId: number, country: string): Promise<Expl
     country: c,
     downloadsEst,
     revenueEst: estimateMonthlyRevenue(app, downloadsEst),
-    trackedAppId: findAppByTrackId(trackId)?.id ?? null,
+    trackedAppId: (await findAppByTrackId(workspaceId, trackId))?.id ?? null,
   };
 }
 
@@ -124,11 +124,11 @@ export function topCharts(country: string, kind: ChartKind): Promise<ChartEntry[
     for (const load of [marketingFeed, legacyFeed]) {
       const entries = await load(c, kind).catch(() => [] as ChartEntry[]);
       if (entries.length) {
-        cacheSet(staleKey, entries, 7 * DAY);
+        await cacheSet(staleKey, entries, 7 * DAY);
         return entries;
       }
     }
-    const stale = cacheGet<ChartEntry[]>(staleKey);
+    const stale = await cacheGet<ChartEntry[]>(staleKey);
     if (stale?.length) return stale;
     throw new HttpError(502, "Apple's top charts feeds are not responding right now");
   });

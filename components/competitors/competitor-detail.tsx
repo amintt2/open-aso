@@ -20,7 +20,7 @@ import RemoveCompetitorDialog from "./remove-competitor-dialog";
 
 export default function CompetitorDetail({ competitorId }: { competitorId: number }) {
   const router = useRouter();
-  const { appId, app } = useCurrentApp();
+  const { appId, app, error: appError } = useCurrentApp();
   const [country, setCountry] = useAppCountry(app);
   const [trackOpen, setTrackOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -43,7 +43,7 @@ export default function CompetitorDetail({ competitorId }: { competitorId: numbe
     </Button>
   );
 
-  if (error || (competitor && competitor.appId !== appId))
+  if (error || appError || (competitor && competitor.appId !== appId))
     return (
       <>
         <PageHeader title={<span className="flex items-center gap-2">{back}Competitor</span>} />

@@ -2,16 +2,17 @@ import { isCountry } from "@/lib/appstore/countries";
 import { analyzeKeyword } from "@/lib/aso/analyze";
 import { getApp } from "@/lib/aso/apps";
 import { marketSize, normalizeTerm } from "@/lib/aso/scoring";
-import { cached, cacheGet, cacheSet, DAY } from "@/lib/server/cache";
+import { cached, cacheGet, cacheSet, DAY, wsKey } from "@/lib/server/cache";
 import { HttpError } from "@/lib/server/http";
+import { workspaceLimits } from "@/lib/server/plans";
 import { findRunningJob, mapLimit, publicJob, startJob, type JobState } from "@/lib/suggestions/jobs";
 import type { JobView } from "@/lib/suggestions/types";
 import type { CountryOpportunity, OpportunityScan } from "./types";
 
 const JOB_KIND = "opportunities";
 
-function lastKey(appId: number) {
-  return `opportunities:last:${appId}`;
+function lastKey(workspaceId: string, appId: number) {
+  return wsKey(workspaceId, `opportunities:last:${appId}`);
 }
 
 function scanCountry(term: string, country: string, trackId: number): Promise<CountryOpportunity> {
@@ -34,19 +35,24 @@ function scanCountry(term: string, country: string, trackId: number): Promise<Co
   });
 }
 
-export function lastScan(appId: number): { last: OpportunityScan | null; running: JobView<OpportunityScan> | null } {
-  getApp(appId);
-  const job = findRunningJob<OpportunityScan>(JOB_KIND, (key) => key.startsWith(`${appId}:`));
-  return { last: cacheGet<OpportunityScan>(lastKey(appId)) ?? null, running: job ? publicJob(job) : null };
+export type ScanOverview = { last: OpportunityScan | null; running: JobView<OpportunityScan> | null; maxCountries: number };
+
+export async function lastScan(workspaceId: string, appId: number): Promise<ScanOverview> {
+  await getApp(workspaceId, appId);
+  const job = findRunningJob<OpportunityScan>(JOB_KIND, (key) => key.startsWith(`${workspaceId}:${appId}:`));
+  const [last, limits] = await Promise.all([cacheGet<OpportunityScan>(lastKey(workspaceId, appId)), workspaceLimits(workspaceId)]);
+  return { last: last ?? null, running: job ? publicJob(job) : null, maxCountries: limits.countriesPerScan };
 }
 
-export function startScan(appId: number, rawTerm: string, rawCountries: string[]): JobState<OpportunityScan> {
-  const app = getApp(appId);
+export async function startScan(workspaceId: string, appId: number, rawTerm: string, rawCountries: string[]): Promise<JobState<OpportunityScan>> {
+  const app = await getApp(workspaceId, appId);
   const term = normalizeTerm(rawTerm);
   if (!term) throw new HttpError(400, "Enter a keyword to scan");
-  const countries = [...new Set(rawCountries.map((c) => c.toLowerCase()).filter(isCountry))].sort((a, b) => marketSize(b) - marketSize(a));
-  if (!countries.length) throw new HttpError(400, "Pick at least one country");
-  const key = `${appId}:${term}:${[...countries].sort().join(",")}`;
+  const requested = [...new Set(rawCountries.map((c) => c.toLowerCase()).filter(isCountry))].sort((a, b) => marketSize(b) - marketSize(a));
+  if (!requested.length) throw new HttpError(400, "Pick at least one country");
+  const { countriesPerScan } = await workspaceLimits(workspaceId);
+  const countries = requested.slice(0, countriesPerScan);
+  const key = `${workspaceId}:${appId}:${term}:${[...countries].sort().join(",")}`;
 
   return startJob<OpportunityScan>(JOB_KIND, key, async (job) => {
     job.setStage(`Scanning ${countries.length} ${countries.length === 1 ? "country" : "countries"}`, countries.length);
@@ -76,10 +82,11 @@ export function startScan(appId: number, rawTerm: string, rawCountries: string[]
       appId,
       term,
       countries,
+      requested: requested.length,
       scannedAt: new Date().toISOString(),
       results: results.sort((a, b) => b.opportunity - a.opportunity),
     };
-    cacheSet(lastKey(appId), scan, 30 * DAY);
+    await cacheSet(lastKey(workspaceId, appId), scan, 30 * DAY);
     return scan;
   });
 }

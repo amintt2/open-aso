@@ -1,4 +1,4 @@
-import { cached, DAY } from "@/lib/server/cache";
+import { cached, DAY, wsKey } from "@/lib/server/cache";
 import { HttpError } from "@/lib/server/http";
 import { aiAvailable, aiModel, AiError, generateJson } from "@/lib/ai/claude";
 import { loadReviews } from "./reviews";
@@ -56,20 +56,20 @@ const SCHEMA = {
   },
 };
 
-export function aiConfigured() {
-  return aiAvailable();
+export function aiConfigured(workspaceId: string) {
+  return aiAvailable(workspaceId);
 }
 
-export async function summarizeReviews(trackId: number, scope: string, appName: string): Promise<ReviewSummary> {
-  if (!aiAvailable()) throw new HttpError(400, "Add an Anthropic API key in Settings to enable AI summaries");
-  const model = aiModel();
+export async function summarizeReviews(workspaceId: string, trackId: number, scope: string, appName: string): Promise<ReviewSummary> {
+  if (!(await aiAvailable(workspaceId))) throw new HttpError(400, "Add an Anthropic API key in Settings to enable AI summaries");
+  const model = await aiModel(workspaceId);
   const { reviews } = await loadReviews(trackId, scope);
   if (!reviews.length) throw new HttpError(404, "No reviews to summarize for this storefront");
   const sample = pickReviews(reviews);
-  const key = `reviews:summary:v2:${model}:${scope}:${trackId}:${reviews[0]?.id ?? ""}:${reviews.length}`;
+  const key = wsKey(workspaceId, `reviews:summary:v2:${model}:${scope}:${trackId}:${reviews[0]?.id ?? ""}:${reviews.length}`);
   return cached(key, DAY, async () => {
     try {
-      const { data, model: used } = await generateJson<Record<string, unknown>>({
+      const { data, model: used } = await generateJson<Record<string, unknown>>(workspaceId, {
         system: SYSTEM,
         schema: SCHEMA,
         effort: "medium",

@@ -18,6 +18,7 @@ export type OpportunityScan = {
   appId: number;
   term: string;
   countries: string[];
+  requested?: number;
   scannedAt: string;
   results: CountryOpportunity[];
 };

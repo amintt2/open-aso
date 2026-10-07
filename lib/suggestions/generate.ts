@@ -10,6 +10,7 @@ import type { SuggestionSource } from "./types";
 export type Candidate = { term: string; sources: SuggestionSource[]; weight: number };
 
 export type GenerateInput = {
+  workspaceId: string;
   app: TrackedApp;
   country: string;
   tracked: TrackedKeyword[];
@@ -128,7 +129,7 @@ export async function generateCandidates(input: GenerateInput): Promise<{ candid
   let usedAi = false;
   if (useAi) {
     try {
-      const list = await aiCandidates({
+      const list = await aiCandidates(input.workspaceId, {
         title: ownTitle,
         subtitle: app.subtitle,
         description: app.store.description ?? "",

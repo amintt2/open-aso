@@ -48,7 +48,7 @@ function average(list: { rating: number }[]) {
 }
 
 export default function ReviewsPage() {
-  const { app } = useCurrentApp();
+  const { app, error: appError } = useCurrentApp();
   const [country, setCountry] = useAppCountry(app);
   const [allCountries, setAllCountries] = useState(false);
   const scope = allCountries ? "all" : country;
@@ -118,7 +118,9 @@ export default function ReviewsPage() {
     <>
       <PageHeader title="Reviews" badge={data && <CountBadge>{reviews.length}</CountBadge>} actions={<ScopeSelect value={scope} onChange={changeScope} />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {!app || isLoading ? (
+        {appError ? (
+          <EmptyState icon={MessageSquareText} title="App not found" description="This app is no longer tracked in this workspace." />
+        ) : !app || isLoading ? (
           <div role="status" className="text-subtle flex flex-col items-center justify-center gap-2 py-20 text-center">
             <Loader2 aria-hidden className="size-4 animate-spin" />
             <p>{scope === "all" ? `Fetching reviews from ${MAJOR_COUNTRIES.length} storefronts…` : "Fetching the latest reviews…"}</p>

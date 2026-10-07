@@ -1,4 +1,8 @@
 import { COUNTRIES } from "@/lib/appstore/countries";
-import { json } from "@/lib/server/http";
+import { requireUser } from "@/lib/server/context";
+import { json, route } from "@/lib/server/http";
 
-export const GET = () => json(COUNTRIES);
+export const GET = route(async () => {
+  await requireUser();
+  return json(COUNTRIES);
+});

@@ -1,7 +1,7 @@
 import { analyzeKeyword, type KeywordAnalysis } from "@/lib/aso/analyze";
 import { getApp } from "@/lib/aso/apps";
 import { listKeywords } from "@/lib/aso/keywords";
-import { cached, cacheGet, cacheSet, DAY, HOUR } from "@/lib/server/cache";
+import { cached, cacheGet, cacheSet, DAY, HOUR, wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
 import { HttpError } from "@/lib/server/http";
 import { aiAvailable } from "./ai";
@@ -13,16 +13,20 @@ export const MIN_TRACKED = 3;
 const MAX_SCORED = 40;
 const JOB_KIND = "suggestions";
 
-function lastKey(appId: number, country: string) {
-  return `suggestions:last:${appId}:${country}`;
+function lastKey(workspaceId: string, appId: number, country: string) {
+  return wsKey(workspaceId, `suggestions:last:${appId}:${country}`);
 }
 
-function jobKey(appId: number, country: string) {
-  return `${appId}:${country}`;
+function jobKey(workspaceId: string, appId: number, country: string) {
+  return `${workspaceId}:${appId}:${country}`;
 }
 
-export function competitorNames(appId: number): string[] {
-  return (db().prepare("SELECT name FROM competitors WHERE app_id = ?").all(appId) as { name: string }[]).map((r) => r.name);
+export async function competitorNames(workspaceId: string, appId: number): Promise<string[]> {
+  const rows = await db.all<{ name: string }>("SELECT c.name FROM competitors c JOIN apps a ON a.id = c.app_id WHERE a.workspace_id = ? AND c.app_id = ?", [
+    workspaceId,
+    appId,
+  ]);
+  return rows.map((r) => r.name);
 }
 
 export function analyzeCached(term: string, country: string, trackId: number): Promise<KeywordAnalysis> {
@@ -44,30 +48,36 @@ function toSuggestion(a: KeywordAnalysis, sources: Suggestion["sources"]): Sugge
   };
 }
 
-export function suggestionsOverview(appId: number, country: string): SuggestionsOverview {
-  getApp(appId);
-  const running = findRunningJob<SuggestionsResult>(JOB_KIND, jobKey(appId, country));
+export async function suggestionsOverview(workspaceId: string, appId: number, country: string): Promise<SuggestionsOverview> {
+  await getApp(workspaceId, appId);
+  const running = findRunningJob<SuggestionsResult>(JOB_KIND, jobKey(workspaceId, appId, country));
+  const [last, ai, tracked] = await Promise.all([
+    cacheGet<SuggestionsResult>(lastKey(workspaceId, appId, country)),
+    aiAvailable(workspaceId),
+    listKeywords(workspaceId, appId, country),
+  ]);
   return {
-    last: cacheGet<SuggestionsResult>(lastKey(appId, country)) ?? null,
+    last: last ?? null,
     running: running ? publicJob(running) : null,
-    aiAvailable: aiAvailable(),
-    trackedCount: listKeywords(appId, country).length,
+    aiAvailable: ai,
+    trackedCount: tracked.length,
   };
 }
 
-export function startSuggestions(appId: number, country: string, useAi: boolean): JobState<SuggestionsResult> {
-  const app = getApp(appId);
-  const tracked = listKeywords(appId, country);
+export async function startSuggestions(workspaceId: string, appId: number, country: string, useAi: boolean): Promise<JobState<SuggestionsResult>> {
+  const app = await getApp(workspaceId, appId);
+  const tracked = await listKeywords(workspaceId, appId, country);
   if (tracked.length < MIN_TRACKED) throw new HttpError(400, `Add at least ${MIN_TRACKED} keywords in this country to unlock suggestions`);
-  const withAi = useAi && aiAvailable();
+  const withAi = useAi && (await aiAvailable(workspaceId));
 
-  return startJob<SuggestionsResult>(JOB_KIND, jobKey(appId, country), async (job) => {
+  return startJob<SuggestionsResult>(JOB_KIND, jobKey(workspaceId, appId, country), async (job) => {
     job.setStage("Collecting ideas", 0);
     const { candidates, aiError, usedAi } = await generateCandidates({
+      workspaceId,
       app,
       country,
       tracked,
-      competitors: competitorNames(appId),
+      competitors: await competitorNames(workspaceId, appId),
       useAi: withAi,
       onPlan: (n) => job.addTotal(n),
       onStep: () => job.tick(),
@@ -95,7 +105,7 @@ export function startSuggestions(appId: number, country: string, useAi: boolean)
       candidatesConsidered: candidates.length,
       suggestions: scored.sort((a, b) => b.opportunity - a.opportunity),
     };
-    cacheSet(lastKey(appId, country), result, 30 * DAY);
+    await cacheSet(lastKey(workspaceId, appId, country), result, 30 * DAY);
     return result;
   });
 }

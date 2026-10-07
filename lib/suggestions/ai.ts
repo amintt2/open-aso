@@ -2,8 +2,8 @@ import { getCountry } from "@/lib/appstore/countries";
 import { normalizeTerm } from "@/lib/aso/scoring";
 import { aiAvailable as available, generateJson } from "@/lib/ai/claude";
 
-export function aiAvailable() {
-  return available();
+export function aiAvailable(workspaceId: string) {
+  return available(workspaceId);
 }
 
 type AiInput = {
@@ -42,9 +42,9 @@ function prompt(input: AiInput) {
     .join("\n");
 }
 
-export async function aiCandidates(input: AiInput): Promise<string[]> {
-  if (!aiAvailable()) return [];
-  const { data } = await generateJson<{ keywords?: unknown }>({ prompt: prompt(input), schema: SCHEMA, effort: "low" });
+export async function aiCandidates(workspaceId: string, input: AiInput): Promise<string[]> {
+  if (!(await aiAvailable(workspaceId))) return [];
+  const { data } = await generateJson<{ keywords?: unknown }>(workspaceId, { prompt: prompt(input), schema: SCHEMA, effort: "low" });
   const list = Array.isArray(data.keywords) ? data.keywords : [];
   return [...new Set(list.filter((k): k is string => typeof k === "string").map(normalizeTerm).filter(Boolean))];
 }

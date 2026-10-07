@@ -21,7 +21,7 @@ import type { JobView } from "@/lib/suggestions/types";
 import CountryScope, { scopeCountries, type Scope } from "./country-scope";
 import OpportunitiesTable from "./opportunities-table";
 
-type Overview = { last: OpportunityScan | null; running: JobView<OpportunityScan> | null };
+type Overview = { last: OpportunityScan | null; running: JobView<OpportunityScan> | null; maxCountries?: number };
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -91,6 +91,8 @@ export default function OpportunityFinder() {
   const ranked = valid.filter((r) => r.position != null);
   const easiest = [...valid].filter((r) => r.popularity >= 20).sort((a, b) => a.difficulty - b.difficulty)[0];
   const countries = scopeCountries(scope);
+  const maxCountries = overview?.maxCountries ?? countries.length;
+  const scanCount = Math.min(countries.length, maxCountries);
   const selectedList = [...selected].filter((c) => !trackedCountries.has(c));
 
   async function startScan(e?: FormEvent) {
@@ -151,9 +153,14 @@ export default function OpportunityFinder() {
               <CountryScope value={scope} onChange={setScope} />
               <Button type="submit" variant="primary" size="md" className="h-9 px-4" disabled={!term.trim() || !countries.length || running || starting}>
                 {running || starting ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Radar aria-hidden className="size-3.5" />}
-                Scan {countries.length} {countries.length === 1 ? "country" : "countries"}
+                Scan {scanCount} {scanCount === 1 ? "country" : "countries"}
               </Button>
             </div>
+            {countries.length > maxCountries && (
+              <p className="caption-style text-subtle">
+                Your plan scans up to {maxCountries} countries at a time, so the {maxCountries} largest markets in this selection go first.
+              </p>
+            )}
             {chips.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="caption-style text-subtle mr-1">Tracked:</span>

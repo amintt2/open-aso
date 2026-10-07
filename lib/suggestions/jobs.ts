@@ -47,6 +47,12 @@ export function getJob<T>(id: string): JobState<T> | undefined {
   return registry().get(id) as JobState<T> | undefined;
 }
 
+export function getWorkspaceJob<T>(workspaceId: string, id: string, kind?: string): JobState<T> | undefined {
+  const job = getJob<T>(id);
+  if (!job || !job.key.startsWith(`${workspaceId}:`) || (kind && job.kind !== kind)) return undefined;
+  return job;
+}
+
 export function findRunningJob<T>(kind: string, key: string | ((key: string) => boolean)): JobState<T> | undefined {
   const match = typeof key === "string" ? (k: string) => k === key : key;
   for (const job of registry().values()) {

@@ -26,7 +26,7 @@ import RemoveCompetitorDialog from "./remove-competitor-dialog";
 type SortKey = "name" | "rating" | "ratingCount" | "downloadsEst" | "revenueEst" | "updatedAt" | "outranksMe";
 
 export default function CompetitorsPage() {
-  const { appId, app } = useCurrentApp();
+  const { appId, app, error: appError } = useCurrentApp();
   const [country, setCountry] = useAppCountry(app);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<Competitor | null>(null);
@@ -67,7 +67,9 @@ export default function CompetitorsPage() {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {(isLoading || !app) && !error ? (
+        {appError ? (
+          <EmptyState icon={Swords} title="App not found" description="This app is no longer tracked in this workspace." />
+        ) : (isLoading || !app) && !error ? (
           <div role="status" className="text-subtle flex items-center justify-center gap-2 py-20">
             <Loader2 aria-hidden className="size-4 animate-spin" /> Loading competitors…
           </div>

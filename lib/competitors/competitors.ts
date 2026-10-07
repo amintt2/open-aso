@@ -5,6 +5,7 @@ import { listKeywords, type TrackedKeyword } from "@/lib/aso/keywords";
 import { estimateMonthlyDownloads, estimateMonthlyRevenue, normalizeTerm } from "@/lib/aso/scoring";
 import { db, parseJson } from "@/lib/server/db";
 import { HttpError } from "@/lib/server/http";
+import { assertWithinLimit } from "@/lib/server/plans";
 import { pool } from "@/lib/explore/pool";
 import type { Comparison, ComparisonRow, Competitor, CompetitorSuggestion } from "./types";
 
@@ -16,16 +17,19 @@ type CompetitorRow = {
   icon_url: string | null;
   developer: string | null;
   country: string;
-  data: string | null;
+  data: unknown;
   created_at: string;
 };
 
-function rowsFor(appId: number) {
-  return db().prepare("SELECT * FROM competitors WHERE app_id = ? ORDER BY created_at ASC").all(appId) as CompetitorRow[];
+function rowsFor(workspaceId: string, appId: number) {
+  return db.all<CompetitorRow>(
+    "SELECT c.* FROM competitors c JOIN apps a ON a.id = c.app_id WHERE a.workspace_id = ? AND c.app_id = ? ORDER BY c.created_at ASC",
+    [workspaceId, appId],
+  );
 }
 
-function getRow(id: number) {
-  const row = db().prepare("SELECT * FROM competitors WHERE id = ?").get(id) as CompetitorRow | undefined;
+async function getRow(workspaceId: string, id: number) {
+  const row = await db.get<CompetitorRow>("SELECT c.* FROM competitors c JOIN apps a ON a.id = c.app_id WHERE a.workspace_id = ? AND c.id = ?", [workspaceId, id]);
   if (!row) throw new HttpError(404, "Competitor not found");
   return row;
 }
@@ -67,47 +71,49 @@ function toCompetitor(row: CompetitorRow, fresh: StoreApp | undefined, country: 
   };
 }
 
-export async function listCompetitors(appId: number, country: string): Promise<Competitor[]> {
-  getApp(appId);
+export async function listCompetitors(workspaceId: string, appId: number, country: string): Promise<Competitor[]> {
+  await getApp(workspaceId, appId);
   const c = getCountry(country).code;
-  const rows = rowsFor(appId);
+  const rows = await rowsFor(workspaceId, appId);
   if (!rows.length) return [];
-  const fresh = await lookupApps(rows.map((r) => r.track_id), c).catch(() => [] as StoreApp[]);
+  const [fresh, keywords] = await Promise.all([lookupApps(rows.map((r) => r.track_id), c).catch(() => [] as StoreApp[]), listKeywords(workspaceId, appId, c)]);
   const byId = new Map(fresh.map((a) => [a.trackId, a]));
-  const keywords = listKeywords(appId, c);
   return rows.map((row) => toCompetitor(row, byId.get(row.track_id), c, keywords));
 }
 
-export async function getCompetitor(id: number, country?: string): Promise<Competitor> {
-  const row = getRow(id);
+export async function getCompetitor(workspaceId: string, id: number, country?: string): Promise<Competitor> {
+  const row = await getRow(workspaceId, id);
   const c = getCountry(country ?? row.country).code;
-  const fresh = await lookupApp(row.track_id, c).catch(() => undefined);
-  return toCompetitor(row, fresh, c, listKeywords(row.app_id, c));
+  const [fresh, keywords] = await Promise.all([lookupApp(row.track_id, c).catch(() => undefined), listKeywords(workspaceId, row.app_id, c)]);
+  return toCompetitor(row, fresh, c, keywords);
 }
 
-export async function addCompetitor(appId: number, trackId: number, country: string): Promise<Competitor> {
-  const app = getApp(appId);
+export async function addCompetitor(workspaceId: string, appId: number, trackId: number, country: string): Promise<Competitor> {
+  const app = await getApp(workspaceId, appId);
   if (app.trackId === trackId) throw new HttpError(400, "An app cannot be its own competitor");
   const c = getCountry(country).code;
-  const existing = db().prepare("SELECT id FROM competitors WHERE app_id = ? AND track_id = ?").get(appId, trackId) as { id: number } | undefined;
-  if (existing) return getCompetitor(existing.id, c);
+  const existing = await db.get<{ id: number }>("SELECT id FROM competitors WHERE app_id = ? AND track_id = ?", [appId, trackId]);
+  if (existing) return getCompetitor(workspaceId, existing.id, c);
+  await assertWithinLimit(workspaceId, "competitors");
   const store = await lookupApp(trackId, c);
   if (!store) throw new HttpError(404, "App not found on the App Store in this country");
-  const info = db()
-    .prepare("INSERT INTO competitors (app_id, track_id, name, icon_url, developer, country, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(appId, trackId, store.trackName, artwork(store.artworkUrl512 ?? store.artworkUrl100, 256), store.sellerName, c, JSON.stringify(store));
-  return getCompetitor(Number(info.lastInsertRowid), c);
+  const row = await db.get<{ id: number }>(
+    `INSERT INTO competitors (app_id, track_id, name, icon_url, developer, country, data) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb)
+     ON CONFLICT (app_id, track_id) DO UPDATE SET name = excluded.name RETURNING id`,
+    [appId, trackId, store.trackName, artwork(store.artworkUrl512 ?? store.artworkUrl100, 256), store.sellerName, c, JSON.stringify(store)],
+  );
+  return getCompetitor(workspaceId, row!.id, c);
 }
 
-export function deleteCompetitor(id: number) {
-  getRow(id);
-  db().prepare("DELETE FROM competitors WHERE id = ?").run(id);
+export async function deleteCompetitor(workspaceId: string, id: number) {
+  await getRow(workspaceId, id);
+  await db.run("DELETE FROM competitors c USING apps a WHERE a.id = c.app_id AND a.workspace_id = ? AND c.id = ?", [workspaceId, id]);
 }
 
-export async function compareKeywords(id: number, country: string): Promise<Comparison> {
-  const row = getRow(id);
+export async function compareKeywords(workspaceId: string, id: number, country: string): Promise<Comparison> {
+  const row = await getRow(workspaceId, id);
   const c = getCountry(country).code;
-  const keywords = listKeywords(row.app_id, c);
+  const keywords = await listKeywords(workspaceId, row.app_id, c);
   const rows = await pool(keywords, 4, async (kw): Promise<ComparisonRow> => {
     const top = kw.topApps.find((a) => a.trackId === row.track_id);
     let theirPosition = top?.position ?? null;
@@ -137,12 +143,13 @@ export async function compareKeywords(id: number, country: string): Promise<Comp
   };
 }
 
-export function suggestCompetitors(appId: number, country: string): CompetitorSuggestion[] {
-  const app = getApp(appId);
+export async function suggestCompetitors(workspaceId: string, appId: number, country: string): Promise<CompetitorSuggestion[]> {
+  const app = await getApp(workspaceId, appId);
   const c = getCountry(country).code;
-  const excluded = new Set([app.trackId, ...rowsFor(appId).map((r) => r.track_id)]);
+  const [rows, keywords] = await Promise.all([rowsFor(workspaceId, appId), listKeywords(workspaceId, appId, c)]);
+  const excluded = new Set([app.trackId, ...rows.map((r) => r.track_id)]);
   const stats = new Map<number, CompetitorSuggestion & { positionSum: number }>();
-  for (const kw of listKeywords(appId, c)) {
+  for (const kw of keywords) {
     for (const top of kw.topApps) {
       if (excluded.has(top.trackId)) continue;
       const entry = stats.get(top.trackId) ?? {

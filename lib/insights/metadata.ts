@@ -53,8 +53,8 @@ function lengthInsights(field: "Title" | "Subtitle", value: string): Insight[] {
   ];
 }
 
-export function metadataInsights(appId: number, country: string): MetadataInsights {
-  const app = getApp(appId);
+export async function metadataInsights(workspaceId: string, appId: number, country: string): Promise<MetadataInsights> {
+  const app = await getApp(workspaceId, appId);
   const title = app.store.trackName ?? app.name;
   const subtitle = app.subtitle?.trim() || null;
   const titleWords = new Set(contentWords(title).map(stem));
@@ -62,7 +62,7 @@ export function metadataInsights(appId: number, country: string): MetadataInsigh
   const metaWords = new Set([...titleWords, ...subtitleWords]);
   const subtitleFree = LIMIT - [...(subtitle ?? "")].length;
 
-  const scored = listKeywords(appId, country).filter((k): k is Scored => k.popularity != null && k.difficulty != null && k.opportunity != null);
+  const scored = (await listKeywords(workspaceId, appId, country)).filter((k): k is Scored => k.popularity != null && k.difficulty != null && k.opportunity != null);
   const insights: Insight[] = [...lengthInsights("Title", title), ...lengthInsights("Subtitle", subtitle ?? "")];
 
   const dupes = [...new Set(contentWords(title).filter((w) => subtitleWords.has(stem(w))))];
