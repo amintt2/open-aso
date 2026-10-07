@@ -1,5 +1,10 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import { Suspense } from "react";
+import AnalyticsView from "@/components/analytics/analytics-view";
 
 export default function Page() {
-  return <ComingSoon title="Analytics" />;
+  return (
+    <Suspense>
+      <AnalyticsView />
+    </Suspense>
+  );
 }

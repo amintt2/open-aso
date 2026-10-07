@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import SettingsView from "@/components/settings/settings-view";
 
 export default function Page() {
-  return <ComingSoon title="Settings" />;
+  return <SettingsView />;
 }
