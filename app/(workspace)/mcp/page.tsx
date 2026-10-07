@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/shell/coming-soon";
+import McpView from "@/components/mcp/mcp-view";
 
 export default function Page() {
-  return <ComingSoon title="MCP Server" />;
+  return <McpView />;
 }

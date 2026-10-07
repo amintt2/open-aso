@@ -16,7 +16,8 @@ export type SettingKey =
   | "integrations.superwall.secret"
   | "integrations.sdk.token"
   | "mcp.enabled"
-  | "mcp.token";
+  | "mcp.token"
+  | "mcp.allowWrites";
 
 const SECRET_KEYS: SettingKey[] = [
   "asc.privateKey",
