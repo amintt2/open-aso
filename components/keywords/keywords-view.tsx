@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   Download,
   KeyRound,
+  Loader2,
   Plus,
   RefreshCw,
   SearchX,
+  Wand2,
 } from "lucide-react";
 import Button from "@/components/_ui/button";
 import CountBadge from "@/components/_ui/count-badge";
@@ -35,6 +37,8 @@ import DeleteKeywordsDialog from "./delete-keywords-dialog";
 import KeywordDetailSheet from "./keyword-detail-sheet";
 import KeywordTable, { KeywordTableSkeleton } from "./keyword-table";
 import KeywordToolbar from "./keyword-toolbar";
+import DetectBanner from "./detect-banner";
+import { useKeywordDetect } from "./use-keyword-detect";
 import type { RowHandlers } from "./keyword-row";
 import TopAppsSheet from "./top-apps-sheet";
 import { useKeywordActions } from "./use-keyword-actions";
@@ -84,6 +88,11 @@ export default function KeywordsView() {
     [],
   );
   const { refreshing, progress, enqueue, busy } = useRefreshQueue(onBatch);
+  const reloadKeywords = useCallback(() => {
+    void mutate();
+    void revalidate("/api/apps");
+  }, [mutate]);
+  const detect = useKeywordDetect(app?.id, country, reloadKeywords);
   const actions = useKeywordActions(appId, mutate);
 
   const all = useMemo(() => keywords ?? [], [keywords]);
@@ -232,6 +241,18 @@ export default function KeywordsView() {
               <Download aria-hidden className="size-3.5" />
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              className="h-[30px] px-3"
+              onClick={() => void detect.start()}
+              disabled={!app || detect.running}
+              aria-label="Detect my app's keywords"
+              title="Find the keywords this app already ranks for (and its App Store Connect keyword field) and add them"
+            >
+              {detect.running ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Wand2 aria-hidden className="size-3.5" />}
+              <span className="hidden sm:inline">Detect</span>
+            </Button>
+            <Button
               variant="primary"
               size="sm"
               className="h-[30px] px-3"
@@ -263,6 +284,8 @@ export default function KeywordsView() {
           </div>
         )}
       </PageHeader>
+
+      {detect.running && detect.job && <DetectBanner job={detect.job} />}
 
       <KeywordToolbar
         query={query}
@@ -312,16 +335,27 @@ export default function KeywordsView() {
           <EmptyState
             icon={KeyRound}
             title={`No keywords tracked in ${countryName}`}
-            description="Add the search terms you want to rank for. Each one is scored for popularity and difficulty, and your position is tracked daily."
+            description="Detect the keywords this app already ranks for, or add the search terms you want to rank for. Each one is scored for popularity and difficulty, and your position is tracked daily."
             action={
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => setAddOpen(true)}
-              >
-                <Plus aria-hidden className="size-3.5" />
-                Add keywords
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => void detect.start()}
+                  disabled={detect.running}
+                >
+                  {detect.running ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Wand2 aria-hidden className="size-3.5" />}
+                  {detect.running ? "Detecting…" : "Detect my keywords"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setAddOpen(true)}
+                >
+                  <Plus aria-hidden className="size-3.5" />
+                  Add manually
+                </Button>
+              </div>
             }
           />
         ) : !visible.length ? (
