@@ -66,7 +66,7 @@ function queryable(exec: () => Pool | PoolClient, waitReady: boolean): Queryable
   };
   return {
     all: async <T extends QueryResultRow>(text: string, params?: Params) => (await query<T>(text, params)).rows,
-    get: async <T extends QueryResultRow>(text: string, params?: Params) => (await query<T>(text, params)).rows[0],
+    get: async <T extends QueryResultRow>(text: string, params?: Params): Promise<T | undefined> => (await query<T>(text, params)).rows[0],
     run: async (text, params) => (await query(text, params)).rowCount ?? 0,
   };
 }

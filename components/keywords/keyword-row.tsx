@@ -168,7 +168,17 @@ function KeywordRow({
           </div>
         </TableCell>
         <TableCell>
-          <ScoreBar value={k.popularity} />
+          <span className="inline-flex items-center gap-1.5">
+            <ScoreBar value={k.popularity} />
+            {k.popularity != null && (
+              <span
+                title={k.popularitySource === "apple" ? "Apple Search Ads popularity" : "Estimated from App Store search suggestions"}
+                className={k.popularitySource === "apple" ? "caption-style text-trend" : "caption-style text-faint"}
+              >
+                {k.popularitySource === "apple" ? "Apple" : "Est."}
+              </span>
+            )}
+          </span>
         </TableCell>
         <TableCell>
           <ScoreBar value={k.difficulty} invert />

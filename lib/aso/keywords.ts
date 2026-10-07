@@ -13,6 +13,7 @@ type KeywordRow = {
   notes: string | null;
   liked: boolean;
   popularity: number | null;
+  popularity_source: string | null;
   difficulty: number | null;
   position: number | null;
   downloads_est: number | null;
@@ -34,6 +35,7 @@ export type TrackedKeyword = {
   notes: string | null;
   liked: boolean;
   popularity: number | null;
+  popularitySource: "apple" | "estimate" | null;
   difficulty: number | null;
   opportunity: number | null;
   position: number | null;
@@ -59,6 +61,7 @@ function toKeyword(row: KeywordRow): TrackedKeyword {
     notes: row.notes,
     liked: !!row.liked,
     popularity: row.popularity,
+    popularitySource: (row.popularity_source as "apple" | "estimate" | null) ?? (row.popularity == null ? null : "estimate"),
     difficulty: row.difficulty,
     opportunity:
       row.popularity != null && row.difficulty != null
@@ -131,9 +134,9 @@ export async function deleteKeywords(workspaceId: string, ids: number[]) {
 
 export async function saveAnalysis(id: number, a: KeywordAnalysis) {
   await db.run(
-    `UPDATE keywords SET popularity = ?, difficulty = ?, position = ?, downloads_est = ?, top5_downloads = ?, top5_mrr = ?,
+    `UPDATE keywords SET popularity = ?, popularity_source = ?, difficulty = ?, position = ?, downloads_est = ?, top5_downloads = ?, top5_mrr = ?,
      label = ?, results_count = ?, top_apps = ?::jsonb, last_refreshed_at = now() WHERE id = ?`,
-    [a.popularity, a.difficulty, a.position, a.downloadsEst, a.top5Downloads, a.top5Mrr, a.label, a.resultsCount, JSON.stringify(a.topApps), id],
+    [a.popularity, a.popularitySource, a.difficulty, a.position, a.downloadsEst, a.top5Downloads, a.top5Mrr, a.label, a.resultsCount, JSON.stringify(a.topApps), id],
   );
   await db.run(
     `INSERT INTO keyword_snapshots (keyword_id, date, popularity, difficulty, position) VALUES (?, current_date, ?, ?, ?)
@@ -143,12 +146,12 @@ export async function saveAnalysis(id: number, a: KeywordAnalysis) {
 }
 
 async function refreshRow(id: number) {
-  const row = await db.get<{ term: string; country: string; track_id: number }>(
-    "SELECT k.term, k.country, a.track_id FROM keywords k JOIN apps a ON a.id = k.app_id WHERE k.id = ?",
+  const row = await db.get<{ term: string; country: string; track_id: number; workspace_id: string }>(
+    "SELECT k.term, k.country, a.track_id, a.workspace_id FROM keywords k JOIN apps a ON a.id = k.app_id WHERE k.id = ?",
     [id],
   );
   if (!row) throw new HttpError(404, "Keyword not found");
-  await saveAnalysis(id, await analyzeKeyword(row.term, row.country, row.track_id));
+  await saveAnalysis(id, await analyzeKeyword(row.term, row.country, row.track_id, row.workspace_id));
 }
 
 export async function refreshKeyword(workspaceId: string, id: number): Promise<TrackedKeyword> {

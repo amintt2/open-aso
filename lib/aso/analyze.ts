@@ -1,5 +1,6 @@
 import { searchApps, searchHints, type StoreApp, artwork } from "@/lib/appstore/itunes";
 import { cached, HOUR } from "@/lib/server/cache";
+import { applePopularity } from "@/lib/apple-ads/popularity";
 import {
   difficultyFromResults,
   estimateMonthlyDownloads,
@@ -35,6 +36,7 @@ export type KeywordAnalysis = {
   term: string;
   country: string;
   popularity: number;
+  popularitySource: "apple" | "estimate";
   difficulty: number;
   difficultyBreakdown: { strength: number; relevance: number; saturation: number };
   position: number | null;
@@ -108,9 +110,16 @@ export function toTopApp(app: StoreApp, index: number, term: string, country: st
   };
 }
 
-export async function analyzeKeyword(term: string, country: string, trackId?: number): Promise<KeywordAnalysis> {
+export async function bestPopularity(term: string, country: string, workspaceId?: string | null) {
+  const apple = await applePopularity(term, country, workspaceId).catch(() => null);
+  if (apple != null) return { popularity: Math.max(5, Math.round(apple)), source: "apple" as const };
+  return { popularity: await popularity(term, country), source: "estimate" as const };
+}
+
+export async function analyzeKeyword(term: string, country: string, trackId?: number, workspaceId?: string | null): Promise<KeywordAnalysis> {
   const t = normalizeTerm(term);
-  const [pop, results] = await Promise.all([popularity(t, country), searchApps(t, country, 200)]);
+  const [best, results] = await Promise.all([bestPopularity(t, country, workspaceId), searchApps(t, country, 200)]);
+  const pop = best.popularity;
   const diff = difficultyFromResults(results, t);
   const idx = trackId ? results.findIndex((r) => r.trackId === trackId) : -1;
   const position = idx >= 0 ? idx + 1 : null;
@@ -120,6 +129,7 @@ export async function analyzeKeyword(term: string, country: string, trackId?: nu
     term: t,
     country,
     popularity: pop,
+    popularitySource: best.source,
     difficulty: diff.score,
     difficultyBreakdown: diff.breakdown,
     position,
