@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
-const DATA_DIR = process.env.OPEN_ASO_DATA_DIR ?? path.join(process.cwd(), ".data");
+export const DATA_DIR = process.env.OPEN_ASO_DATA_DIR ?? path.join(process.cwd(), ".data");
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (

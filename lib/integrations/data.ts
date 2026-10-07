@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { db } from "@/lib/server/db";
+import { DATA_DIR, db } from "@/lib/server/db";
 import { HttpError } from "@/lib/server/http";
 
 const SKIP_TABLES = new Set(["cache", "sqlite_sequence", "sqlite_stat1", "sqlite_stat4"]);
@@ -10,7 +10,7 @@ const SECRET_SETTING = /(privateKey|anthropicKey|token|secret)$/i;
 export const EXPORT_FORMAT = "open-aso-export";
 
 export function dataDirectory() {
-  return path.resolve(process.env.OPEN_ASO_DATA_DIR ?? path.join(process.cwd(), ".data"));
+  return path.resolve(DATA_DIR);
 }
 
 function tableNames() {
