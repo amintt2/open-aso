@@ -44,10 +44,11 @@ async function buildCandidates(app: StoreApp, subtitle: string | null, country: 
   return [...map.values()].sort((a, b) => b.weight - a.weight).slice(0, MAX_CANDIDATES);
 }
 
-export function discoverRankingKeywords(trackId: number, country: string, subtitle?: string | null): Promise<RankingKeyword[]> {
+export function discoverRankingKeywords(trackId: number, country: string, subtitle?: string | null, opts: { popularity?: boolean } = {}): Promise<RankingKeyword[]> {
+  const withPopularity = opts.popularity !== false;
   const c = getCountry(country).code;
   const sub = subtitle ? normalizeTerm(subtitle).slice(0, 60) : "";
-  return cached(`explore:ranking:v3:${c}:${trackId}:${sub}`, 12 * HOUR, async () => {
+  return cached(`explore:ranking:v3:${c}:${trackId}:${sub}${withPopularity ? "" : ":nopop"}`, 12 * HOUR, async () => {
     const app = await lookupApp(trackId, c);
     if (!app) throw new HttpError(404, "App not available in this storefront");
     const candidates = await buildCandidates(app, sub || null, c);
@@ -60,7 +61,7 @@ export function discoverRankingKeywords(trackId: number, country: string, subtit
     const scored = await pool(ranking, 4, async (r) => ({
       term: r.term,
       position: r.position,
-      popularity: await popularity(r.term, c).catch(() => null),
+      popularity: withPopularity ? await popularity(r.term, c).catch(() => null) : null,
       resultsCount: r.resultsCount,
       source: r.source,
     }));

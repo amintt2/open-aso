@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { appStoreFetch, egressStats } from "./egress";
 import { cached, DAY, HOUR } from "@/lib/server/cache";
 import { getCountry } from "./countries";
 
@@ -42,45 +43,11 @@ export type Review = {
   updated: string;
 };
 
-const MAX_CONCURRENT = 6;
-let active = 0;
-const queue: (() => void)[] = [];
-
-async function slot<T>(fn: () => Promise<T>): Promise<T> {
-  if (active >= MAX_CONCURRENT) await new Promise<void>((r) => queue.push(r));
-  active++;
-  try {
-    return await fn();
-  } finally {
-    active--;
-    queue.shift()?.();
-  }
+async function fetchWithRetry(url: string, init?: { headers?: Record<string, string> }): Promise<Response> {
+  return appStoreFetch(url, init);
 }
 
-async function fetchWithRetry(url: string, init?: RequestInit, attempts = 4): Promise<Response> {
-  let lastError: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const res = await slot(() =>
-        fetch(url, {
-          ...init,
-          headers: { "User-Agent": "Mozilla/5.0 (Macintosh) open-aso", ...init?.headers },
-          signal: AbortSignal.timeout(20000),
-        }),
-      );
-      if (res.status === 403 || res.status === 429 || res.status >= 500) {
-        lastError = new Error(`App Store responded ${res.status}`);
-        await new Promise((r) => setTimeout(r, 800 * 2 ** i));
-        continue;
-      }
-      return res;
-    } catch (error) {
-      lastError = error;
-      await new Promise((r) => setTimeout(r, 500 * 2 ** i));
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("App Store request failed");
-}
+export { egressStats as appStoreThrottleState };
 
 function normalize(raw: Record<string, unknown>): StoreApp {
   const app = raw as unknown as StoreApp;

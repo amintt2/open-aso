@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { rateLimit } from "@/lib/server/rate-limit";
 import { lastScan, startScan } from "@/lib/opportunities/scan";
 import { publicJob } from "@/lib/suggestions/jobs";
 import { requireWorkspace } from "@/lib/server/context";
@@ -17,5 +18,6 @@ export const POST = route(async (req) => {
     req,
     z.object({ appId: z.number().int().positive(), term: z.string().min(1).max(100), countries: z.array(z.string().length(2)).min(1).max(100) }),
   );
+  rateLimit(workspaceId, "opportunities");
   return json(publicJob(await startScan(workspaceId, input.appId, input.term, input.countries)), { status: 202 });
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { rateLimit } from "@/lib/server/rate-limit";
 import { isCountry } from "@/lib/appstore/countries";
 import { publicJob } from "@/lib/suggestions/jobs";
 import { startSuggestions, suggestionsOverview } from "@/lib/suggestions/run";
@@ -22,6 +23,7 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   const { workspaceId } = await requireWorkspace();
   const input = await body(req, z.object({ appId: z.number().int().positive(), country: z.string().length(2), useAi: z.boolean().optional() }));
+  rateLimit(workspaceId, "suggestions");
   const job = await startSuggestions(workspaceId, input.appId, countryOf(input.country), input.useAi ?? false);
   return json(publicJob(job), { status: 202 });
 });
