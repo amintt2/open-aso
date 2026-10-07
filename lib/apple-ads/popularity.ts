@@ -4,11 +4,12 @@ import { normalizeTerm } from "@/lib/aso/scoring";
 import { cacheGet, cacheSet, DAY } from "@/lib/server/cache";
 import { HttpError } from "@/lib/server/http";
 import { getPlatformSetting, setPlatformSetting } from "@/lib/server/platform-settings";
+import { db } from "@/lib/server/db";
+import { adminEmails } from "@/lib/auth";
 import { getSettings } from "@/lib/server/settings";
 import { createClientSecret, SCOPE, TOKEN_URL, type Credentials } from "./auth";
 
 const BASE = "https://api.ads.apple.com/v1";
-const BATCH = 50;
 const TTL = 7 * DAY;
 const MISS_TTL = 2 * DAY;
 
@@ -18,13 +19,15 @@ type Cached = { value: number | null };
 type GlobalState = {
   tokens: Map<string, { token: string; expiresAt: number }>;
   accounts: Map<string, string>;
-  queues: Map<string, { terms: Map<string, ((v: number | null) => void)[]>; timer: ReturnType<typeof setTimeout> | null; source: Source; country: string }>;
+  anchors: Map<string, string>;
+  pending: Map<string, Promise<number | null>>;
+  active: number;
 };
 type G = typeof globalThis & { __openAsoApplePop?: GlobalState };
 
 function state(): GlobalState {
   const g = globalThis as G;
-  g.__openAsoApplePop ??= { tokens: new Map(), accounts: new Map(), queues: new Map() };
+  g.__openAsoApplePop ??= { tokens: new Map(), accounts: new Map(), anchors: new Map(), pending: new Map(), active: 0 };
   return g.__openAsoApplePop;
 }
 
@@ -113,88 +116,94 @@ async function adAccount(source: Source) {
   return String(id);
 }
 
-function phraseBody(terms: string[], country: string | null) {
-  const filters: { field: string; operator: string; value: string[] }[] = [
-    { field: "queryType", operator: "EQUALS", value: ["SEARCH"] },
-    { field: "phrase", operator: "IN", value: terms },
-  ];
-  if (country) filters.push({ field: "countriesOrRegions", operator: "IN", value: [country.toUpperCase()] });
-  return { filters, pagination: { offset: 0, pageSize: Math.max(20, terms.length) } };
+type KeywordRow = { text?: string; popularity?: number };
+
+async function anchorCandidates(source: Source): Promise<string[]> {
+  const configured = source.kind === "platform" ? await getPlatformSetting("ads.anchorAppId") : undefined;
+  const rows = await db.all<{ track_id: number }>(
+    source.kind === "workspace"
+      ? "SELECT track_id FROM apps WHERE workspace_id = ? AND is_mine ORDER BY created_at ASC LIMIT 10"
+      : `SELECT a.track_id FROM apps a JOIN "member" m ON m."organizationId" = a.workspace_id JOIN "user" u ON u."id" = m."userId"
+         WHERE a.is_mine AND lower(u."email") = ANY(?::text[]) ORDER BY a.created_at ASC LIMIT 10`,
+    [source.kind === "workspace" ? source.id.split(":")[1] : adminEmails()],
+  );
+  return [...new Set([...(configured ? [configured] : []), ...rows.map((r) => String(r.track_id))])];
 }
 
-async function countryFilterMode(): Promise<"supported" | "unsupported" | "unknown"> {
-  const v = await getPlatformSetting("ads.countryFilter");
-  return v === "supported" || v === "unsupported" ? v : "unknown";
-}
-
-async function fetchBatch(source: Source, terms: string[], country: string): Promise<Map<string, number>> {
-  let mode = await countryFilterMode();
-  let data: { result?: { phrase?: string; popularity?: number }[] };
-  if (mode !== "unsupported") {
+async function anchorApp(source: Source): Promise<string> {
+  const st = state();
+  const known = st.anchors.get(source.id);
+  if (known) return known;
+  const candidates = await anchorCandidates(source);
+  if (!candidates.length) throw new HttpError(409, "Add one of your own apps (one that exists in this Apple Ads account) so Apple popularity can be looked up");
+  for (const adamId of candidates) {
     try {
-      data = await api(source, "/suggestions/phrases/query", { method: "POST", body: phraseBody(terms, country) });
-      if (mode === "unknown") await setPlatformSetting("ads.countryFilter", "supported");
+      await api(source, "/suggestions/keywords/query", { method: "POST", body: keywordBody(adamId, "us", "app") });
+      st.anchors.set(source.id, adamId);
+      if (source.kind === "platform") await setPlatformSetting("ads.anchorAppId", adamId);
+      return adamId;
     } catch (error) {
       if (!(error instanceof HttpError) || error.status !== 400) throw error;
-      await setPlatformSetting("ads.countryFilter", "unsupported");
-      mode = "unsupported";
-      data = { result: [] };
     }
-  } else data = { result: [] };
-  if (mode === "unsupported") {
-    if (country !== "us") return new Map();
-    data = await api(source, "/suggestions/phrases/query", { method: "POST", body: phraseBody(terms, null) });
   }
-  const out = new Map<string, number>();
-  for (const row of data.result ?? []) if (row.phrase && typeof row.popularity === "number") out.set(normalizeTerm(row.phrase), row.popularity);
-  return out;
+  throw new HttpError(409, "None of your apps is accessible in this Apple Ads account. Set the anchor app ID in Admin → Platform.");
 }
+
+function keywordBody(adamId: string, country: string, term: string) {
+  return {
+    filters: [
+      { field: "promotedObjectId", operator: "EQUALS", value: [adamId] },
+      { field: "promotedObjectType", operator: "EQUALS", value: ["APPSTORE_APP"] },
+      { field: "countriesOrRegions", operator: "IN", value: [country.toUpperCase()] },
+      { field: "terms", operator: "IN", value: [term] },
+    ],
+    pagination: { offset: 0, pageSize: 200 },
+  };
+}
+
+async function lookupTerm(source: Source, term: string, country: string): Promise<number | null> {
+  const adamId = await anchorApp(source);
+  const data = await api<{ result?: KeywordRow[] }>(source, "/suggestions/keywords/query", { method: "POST", body: keywordBody(adamId, country, term) });
+  let exact: number | null = null;
+  for (const row of data.result ?? []) {
+    if (!row.text || typeof row.popularity !== "number") continue;
+    const t = normalizeTerm(row.text);
+    if (t === term) exact = row.popularity;
+    else await cacheSet(cacheKey(country, t), { value: row.popularity } satisfies Cached, TTL).catch(() => undefined);
+  }
+  return exact;
+}
+
+const CONCURRENCY = 3;
 
 function enqueue(source: Source, country: string, term: string): Promise<number | null> {
   const st = state();
-  const key = `${source.id}|${country}`;
-  let q = st.queues.get(key);
-  if (!q) {
-    q = { terms: new Map(), timer: null, source, country };
-    st.queues.set(key, q);
-  }
-  return new Promise((resolve) => {
-    const waiters = q.terms.get(term) ?? [];
-    waiters.push(resolve);
-    q.terms.set(term, waiters);
-    if (q.terms.size >= BATCH) void flush(key);
-    else if (!q.timer) q.timer = setTimeout(() => void flush(key), 120);
-  });
-}
-
-async function flush(key: string) {
-  const st = state();
-  const q = st.queues.get(key);
-  if (!q) return;
-  st.queues.delete(key);
-  if (q.timer) clearTimeout(q.timer);
-  const entries = [...q.terms.entries()];
-  for (let i = 0; i < entries.length; i += BATCH) {
-    const chunk = entries.slice(i, i + BATCH);
-    let found = new Map<string, number>();
-    let failed = false;
+  const key = `${source.id}|${country}|${term}`;
+  const pending = st.pending.get(key);
+  if (pending) return pending;
+  const run = async () => {
+    while (st.active >= CONCURRENCY) await new Promise((r) => setTimeout(r, 100));
+    st.active++;
     try {
-      found = await fetchBatch(q.source, chunk.map(([t]) => t), q.country);
-      if (q.source.kind === "platform") await setPlatformSetting("ads.lastOkAt", new Date().toISOString());
+      const value = await lookupTerm(source, term, country);
+      await cacheSet(cacheKey(country, term), { value } satisfies Cached, value == null ? MISS_TTL : TTL).catch(() => undefined);
+      if (source.kind === "platform") await setPlatformSetting("ads.lastOkAt", new Date().toISOString()).catch(() => undefined);
+      return value;
     } catch (error) {
-      failed = true;
-      if (q.source.kind === "platform") await setPlatformSetting("ads.lastError", error instanceof Error ? error.message : String(error)).catch(() => undefined);
+      if (source.kind === "platform") await setPlatformSetting("ads.lastError", error instanceof Error ? error.message : String(error)).catch(() => undefined);
+      return null;
+    } finally {
+      st.active--;
+      st.pending.delete(key);
     }
-    for (const [term, waiters] of chunk) {
-      const value = failed ? null : (found.get(term) ?? null);
-      if (!failed) await cacheSet(cacheKey(q.country, term), { value } satisfies Cached, value == null ? MISS_TTL : TTL).catch(() => undefined);
-      waiters.forEach((w) => w(value));
-    }
-  }
+  };
+  const promise = run();
+  st.pending.set(key, promise);
+  return promise;
 }
 
 function cacheKey(country: string, term: string) {
-  return `apple:popularity:v1:${country}:${term}`;
+  return `apple:popularity:v2:${country}:${term}`;
 }
 
 export async function applePopularity(term: string, country: string, workspaceId?: string | null): Promise<number | null> {
@@ -214,14 +223,14 @@ export async function platformCredentials() {
 }
 
 export async function platformStatus() {
-  const [clientId, teamId, keyId, privateKey, publicKey, adAccountId, countryFilter, lastError, lastOkAt] = await Promise.all([
+  const [clientId, teamId, keyId, privateKey, publicKey, adAccountId, anchorAppId, lastError, lastOkAt] = await Promise.all([
     getPlatformSetting("ads.clientId"),
     getPlatformSetting("ads.teamId"),
     getPlatformSetting("ads.keyId"),
     getPlatformSetting("ads.privateKey"),
     getPlatformSetting("ads.publicKey"),
     getPlatformSetting("ads.adAccountId"),
-    getPlatformSetting("ads.countryFilter"),
+    getPlatformSetting("ads.anchorAppId"),
     getPlatformSetting("ads.lastError"),
     getPlatformSetting("ads.lastOkAt"),
   ]);
@@ -233,7 +242,7 @@ export async function platformStatus() {
     teamId: teamId ?? null,
     keyId: keyId ?? null,
     adAccountId: adAccountId ?? null,
-    countryFilter: countryFilter ?? "unknown",
+    anchorAppId: anchorAppId ?? null,
     lastError: lastError ?? null,
     lastOkAt: lastOkAt ?? null,
   };
@@ -260,20 +269,23 @@ export async function savePlatformIds(input: { clientId: string; teamId: string;
   await setPlatformSetting("ads.teamId", input.teamId.trim());
   await setPlatformSetting("ads.keyId", input.keyId.trim());
   await setPlatformSetting("ads.adAccountId", null);
-  await setPlatformSetting("ads.countryFilter", null);
+  await setPlatformSetting("ads.anchorAppId", null);
   await setPlatformSetting("ads.lastError", null);
   state().tokens.clear();
   state().accounts.clear();
+  state().anchors.clear();
 }
 
 export async function testPlatform(term = "photo editor", country = "us") {
   const source = await platformSource();
   if (!source) throw new HttpError(409, "Add the platform Apple Ads key first");
   await adAccount(source);
-  const found = await fetchBatch(source, [normalizeTerm(term)], country);
+  const anchor = await anchorApp(source);
+  const t = normalizeTerm(term);
+  const popularity = await lookupTerm(source, t, getCountry(country).code);
   await setPlatformSetting("ads.lastError", null);
   await setPlatformSetting("ads.lastOkAt", new Date().toISOString());
-  return { term, country, popularity: found.get(normalizeTerm(term)) ?? null, countryFilter: await countryFilterMode() };
+  return { term: t, country, popularity, anchorAppId: anchor };
 }
 
 export async function probePlatform(path: string, payload?: unknown) {
@@ -294,8 +306,13 @@ export async function probePlatform(path: string, payload?: unknown) {
   return { status: res.status, body: text.slice(0, 4000) };
 }
 
+export async function setAnchorApp(adamId: string) {
+  await setPlatformSetting("ads.anchorAppId", adamId);
+  state().anchors.clear();
+}
+
 export async function clearPlatform() {
-  for (const k of ["ads.clientId", "ads.teamId", "ads.keyId", "ads.privateKey", "ads.publicKey", "ads.adAccountId", "ads.countryFilter", "ads.lastError", "ads.lastOkAt"] as const)
+  for (const k of ["ads.clientId", "ads.teamId", "ads.keyId", "ads.privateKey", "ads.publicKey", "ads.adAccountId", "ads.anchorAppId", "ads.lastError", "ads.lastOkAt"] as const)
     await setPlatformSetting(k, null);
   state().tokens.clear();
   state().accounts.clear();

@@ -17,7 +17,7 @@ type Status = {
   teamId: string | null;
   keyId: string | null;
   adAccountId: string | null;
-  countryFilter: string;
+  anchorAppId: string | null;
   lastError: string | null;
   lastOkAt: string | null;
 };
@@ -26,16 +26,17 @@ export default function PlatformKeyCard() {
   const { data, mutate } = useApi<Status>("/api/platform/apple-ads");
   const [busy, setBusy] = useState<string | null>(null);
   const [ids, setIds] = useState({ clientId: "", teamId: "", keyId: "" });
+  const [anchor, setAnchor] = useState("");
 
   async function run(action: string, payload: Record<string, unknown> = {}) {
     setBusy(action);
     try {
-      const res = await api<Status & { status?: Status; result?: { popularity: number | null; term: string; countryFilter: string } }>("/api/platform/apple-ads", {
+      const res = await api<Status & { status?: Status; result?: { popularity: number | null; term: string; anchorAppId: string } }>("/api/platform/apple-ads", {
         method: "POST",
         body: { action, ...payload },
       });
       await mutate(res.status ?? res, { revalidate: true });
-      if (action === "test" && res.result)
+      if ((action === "test" || action === "anchor") && res.result)
         toast.success(
           res.result.popularity == null ? `Connected — Apple has no popularity for “${res.result.term}”` : `Connected — “${res.result.term}” popularity ${res.result.popularity}`,
         );
@@ -122,8 +123,19 @@ export default function PlatformKeyCard() {
       </ol>
 
       {data?.configured && (
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Anchor app ID" htmlFor="pk-anchor" hint="One of your apps that exists in this Apple Ads account. Apple requires it as context for keyword popularity lookups.">
+            <Input id="pk-anchor" inputMode="numeric" placeholder={data.anchorAppId ?? "e.g. 6759305108"} value={anchor} onChange={(e) => setAnchor(e.target.value.replace(/\D/g, ""))} className="w-[220px]" />
+          </Field>
+          <Button variant="secondary" size="md" disabled={busy !== null || !anchor} onClick={() => void run("anchor", { anchorAppId: anchor }).then(() => setAnchor(""))}>
+            {busy === "anchor" && <Loader2 aria-hidden className="size-3.5 animate-spin" />}
+            Set anchor app
+          </Button>
+        </div>
+      )}
+      {data?.configured && (
         <p className="caption-style text-subtle">
-          Ad account {data.adAccountId ?? "—"} · country filter {data.countryFilter} · last success {timeAgo(data.lastOkAt)}
+          Ad account {data.adAccountId ?? "—"} · anchor app {data.anchorAppId ?? "auto"} · last success {timeAgo(data.lastOkAt)}
         </p>
       )}
     </section>

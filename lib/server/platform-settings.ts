@@ -8,7 +8,7 @@ export type PlatformKey =
   | "ads.privateKey"
   | "ads.publicKey"
   | "ads.adAccountId"
-  | "ads.countryFilter"
+  | "ads.anchorAppId"
   | "ads.lastError"
   | "ads.lastOkAt";
 
