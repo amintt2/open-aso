@@ -1,8 +1,8 @@
 # Open ASO
 
-Open-source App Store Optimization workspace — self-host it or run it as a multi-tenant SaaS. Research keywords, track rankings, watch competitors, edit your App Store listing, localize prices, run Apple Ads and connect your analytics — from one app that runs on your machine (or your own server).
+Open-source App Store Optimization workspace — self-host it or run it as a multi-tenant SaaS. Research keywords, track rankings, watch competitors, edit your App Store listing, localize prices, run Apple Ads and connect your analytics — with Google sign-in, isolated workspaces and team invites.
 
-Built with Next.js 16, React 19, Tailwind 4 and SQLite. UI kit derived from the MIT-licensed [Kargul sales-crm starter](https://github.com/kargulstudio/sales-crm).
+Built with Next.js 16, React 19, Tailwind 4, Postgres and Better Auth. UI kit derived from the MIT-licensed [Kargul sales-crm starter](https://github.com/kargulstudio/sales-crm).
 
 ## Features
 
@@ -17,9 +17,9 @@ Built with Next.js 16, React 19, Tailwind 4 and SQLite. UI kit derived from the 
 | Price localization | Subscriptions & IAPs: purchasing-power or equalized pricing snapped to Apple price points, scheduled changes |
 | Apple Ads | OAuth setup, dashboard, campaigns / ad groups / keywords / negatives, bid & budget edits with diffs, campaign creation, cannibalization fix, playbook-driven recommendations |
 | Analytics | Self-hosted install attribution (AdServices), RevenueCat & Superwall webhooks, overview, sources, geography, retention, keyword ROAS; PostHog product analytics |
-| MCP server | 41 tools for Claude Code, Claude Desktop, Cursor, VS Code and Codex — read-only by default, guarded dry-run writes |
+| MCP server | 49 tools (per-workspace token) for Claude Code, Claude Desktop, Cursor, VS Code and Codex — read-only by default, guarded dry-run writes |
 
-Popularity, difficulty, download and revenue numbers are **modeled estimates** computed from public App Store data (search hints, search results, ratings). Rankings come from the public iTunes Search API and can differ slightly from what a given device shows.
+Popularity comes from Apple's own Search Ads popularity (Apple Ads Platform API) when a workspace or platform Apple Ads key is configured, and is otherwise **estimated** from App Store search suggestions; difficulty, download and revenue numbers are modeled estimates from public App Store data. Rankings come from the public iTunes Search API and can differ slightly from what a given device shows.
 
 ## Getting started (local)
 
