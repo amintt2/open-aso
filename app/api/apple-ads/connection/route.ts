@@ -3,11 +3,12 @@ import { body, json } from "@/lib/server/http";
 import { requireWorkspace } from "@/lib/server/context";
 import { disconnect, getConnection, knownOrgs, saveConnection } from "@/lib/apple-ads/connection";
 import { adsRoute } from "@/lib/apple-ads/http";
+import { platformCredentials } from "@/lib/apple-ads/popularity";
 
 export const GET = adsRoute(async () => {
-  const { workspaceId, role } = await requireWorkspace();
-  const [connection, orgs] = await Promise.all([getConnection(workspaceId), knownOrgs(workspaceId)]);
-  return json({ connection, orgs, canManage: role !== "member" });
+  const { workspaceId, role, isAdmin } = await requireWorkspace();
+  const [connection, orgs, platform] = await Promise.all([getConnection(workspaceId), knownOrgs(workspaceId), isAdmin ? platformCredentials() : null]);
+  return json({ connection, orgs, canManage: role !== "member", platformAvailable: !!platform && role !== "member" });
 });
 
 export const PUT = adsRoute(async (req) => {

@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { ConfirmDialog, DetailSheet } from "./bits";
 import { useAdsUi } from "./store";
 
-type ConnectionResponse = { connection: AdsConnection; orgs: AdsOrg[]; canManage?: boolean };
+type ConnectionResponse = { connection: AdsConnection; orgs: AdsOrg[]; canManage?: boolean; platformAvailable?: boolean };
 
 function Step({ n, title, done, children }: { n: number; title: string; done?: boolean; children: ReactNode }) {
   return (
@@ -106,6 +106,15 @@ export default function ConnectSheet() {
 
   const idsFilled = form.clientId.trim() && form.teamId.trim() && form.keyId.trim();
 
+  async function linkPlatformKey() {
+    const res = await run("platform", () => api<ConnectionResponse>("/api/apple-ads/connection/platform", { method: "POST" }));
+    if (res) {
+      await mutate(res, { revalidate: false });
+      await revalidate("/api/apple-ads/");
+      toast.success(res.connection.connected ? `Connected to ${res.connection.orgName ?? "Apple Ads"}` : "Platform key linked — choose an organization below");
+    }
+  }
+
   return (
     <DetailSheet
       open={open}
@@ -131,6 +140,14 @@ export default function ConnectSheet() {
           </p>
         )}
       </div>
+      {data?.platformAvailable && !c?.configured && (
+        <div className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line-strong bg-secondary p-3">
+          <p className="text-soft min-w-0 flex-1 text-[13px]">Your platform Apple Ads key is set up. Use the same API user for this workspace instead of creating a new key.</p>
+          <Button variant="primary" size="sm" disabled={busy !== null} onClick={() => void linkPlatformKey()}>
+            Use the platform key
+          </Button>
+        </div>
+      )}
       <ol className="flex flex-col gap-6 p-6">
         <Step n={1} title="Invite an API user">
           <p className="text-soft">

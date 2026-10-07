@@ -94,3 +94,17 @@ export async function disconnect(workspaceId: string, keepKeys: boolean) {
   await clearAdsCache(workspaceId);
   return getConnection(workspaceId);
 }
+
+export async function applyCredentials(
+  workspaceId: string,
+  creds: { clientId: string; teamId: string; keyId: string; privateKey: string; publicKey: string | null },
+) {
+  await setSetting(workspaceId, "ads.clientId", creds.clientId);
+  await setSetting(workspaceId, "ads.teamId", creds.teamId);
+  await setSetting(workspaceId, "ads.keyId", creds.keyId);
+  await setSetting(workspaceId, "ads.privateKey", creds.privateKey);
+  await setSetting(workspaceId, "ads.publicKey", creds.publicKey);
+  resetToken(workspaceId);
+  await clearAdsCache(workspaceId);
+  return testConnection(workspaceId);
+}

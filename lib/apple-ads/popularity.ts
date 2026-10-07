@@ -207,6 +207,12 @@ export async function applePopularity(term: string, country: string, workspaceId
   return enqueue(source, c, t);
 }
 
+export async function platformCredentials() {
+  const source = await platformSource();
+  if (!source) return null;
+  return { ...source.creds, publicKey: (await getPlatformSetting("ads.publicKey")) ?? null };
+}
+
 export async function platformStatus() {
   const [clientId, teamId, keyId, privateKey, publicKey, adAccountId, countryFilter, lastError, lastOkAt] = await Promise.all([
     getPlatformSetting("ads.clientId"),
