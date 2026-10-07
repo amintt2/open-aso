@@ -1,12 +1,9 @@
 import { getCountry } from "@/lib/appstore/countries";
 import { normalizeTerm } from "@/lib/aso/scoring";
-import { getSetting } from "@/lib/server/settings";
-
-const DEFAULT_MODEL = "claude-sonnet-5-5";
-const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
+import { aiAvailable as available, generateJson } from "@/lib/ai/claude";
 
 export function aiAvailable() {
-  return !!getSetting("ai.anthropicKey");
+  return available();
 }
 
 type AiInput = {
@@ -17,12 +14,6 @@ type AiInput = {
   country: string;
   tracked: string[];
   competitors: string[];
-};
-
-type MessagesResponse = {
-  stop_reason?: string;
-  content?: { type: string; text?: string }[];
-  error?: { message?: string };
 };
 
 const SCHEMA = {
@@ -52,36 +43,8 @@ function prompt(input: AiInput) {
 }
 
 export async function aiCandidates(input: AiInput): Promise<string[]> {
-  const key = getSetting("ai.anthropicKey");
-  if (!key) return [];
-  const model = getSetting("ai.model") || DEFAULT_MODEL;
-  const useFallbacks = FALLBACK_MODELS.has(model);
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "x-api-key": key,
-    "anthropic-version": "2023-06-01",
-  };
-  if (useFallbacks) headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers,
-    signal: AbortSignal.timeout(120000),
-    body: JSON.stringify({
-      model,
-      max_tokens: 16000,
-      output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
-      ...(useFallbacks ? { fallbacks: "default" } : {}),
-      messages: [{ role: "user", content: prompt(input) }],
-    }),
-  });
-  const data = (await res.json().catch(() => ({}))) as MessagesResponse;
-  if (!res.ok) throw new Error(data.error?.message ?? `Anthropic API responded ${res.status}`);
-  if (data.stop_reason === "refusal") throw new Error("The model declined to suggest keywords");
-  const text = (data.content ?? [])
-    .filter((b) => b.type === "text" && b.text)
-    .map((b) => b.text)
-    .join("");
-  const parsed = JSON.parse(text) as { keywords?: unknown };
-  const list = Array.isArray(parsed.keywords) ? parsed.keywords : [];
+  if (!aiAvailable()) return [];
+  const { data } = await generateJson<{ keywords?: unknown }>({ prompt: prompt(input), schema: SCHEMA, effort: "low" });
+  const list = Array.isArray(data.keywords) ? data.keywords : [];
   return [...new Set(list.filter((k): k is string => typeof k === "string").map(normalizeTerm).filter(Boolean))];
 }
