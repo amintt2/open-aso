@@ -42,3 +42,5 @@ next-env.d.ts
 
 # local data
 /.data/
+
+/open-aso-*-export.json
