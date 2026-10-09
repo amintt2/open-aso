@@ -31,7 +31,7 @@ function Caption({ children }: { children: React.ReactNode }) {
 
 function Tiles({ data }: { data: ImpactResult }) {
   const t = data.totals;
-  const source = data.dataSources.observed === "posthog" ? "PostHog new users" : data.dataSources.observed === "sdk" ? "SDK installs" : null;
+  const source = data.dataSources.observed === "posthog" ? "PostHog new users" : data.dataSources.observed === "sdk" ? "SDK installs" : data.dataSources.observed === "apple" ? "Apple first-time downloads" : null;
   const organicShare = t.observed && t.organic != null ? t.organic / t.observed : null;
   const explainedShare = t.searchEstimate ? t.explained / t.searchEstimate : null;
   return (

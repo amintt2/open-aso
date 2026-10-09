@@ -6,8 +6,9 @@ import { asoTools } from "./tools/aso";
 import { manageTools } from "./tools/manage";
 import { impactTools } from "./tools/impact";
 import { trendsTools } from "./tools/trends";
+import { storeAnalyticsTools } from "./tools/store-analytics";
 
-export const TOOLS: McpTool[] = [...asoTools, ...manageTools, ...adsTools, ...analyticsTools, ...posthogTools, ...impactTools, ...trendsTools];
+export const TOOLS: McpTool[] = [...asoTools, ...manageTools, ...adsTools, ...analyticsTools, ...posthogTools, ...impactTools, ...trendsTools, ...storeAnalyticsTools];
 
 export function toolCatalog(): ToolInfo[] {
   return TOOLS.map(toolInfo);

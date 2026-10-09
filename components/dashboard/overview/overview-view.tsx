@@ -4,6 +4,7 @@ import { LayoutGrid } from "lucide-react";
 import CountrySelect from "@/components/shell/country-select";
 import EmptyState from "@/components/shell/empty-state";
 import PageHeader from "@/components/shell/page-header";
+import StoreRow from "@/components/store-analytics/store-row";
 import DistributionChart from "@/components/trends/distribution-chart";
 import VisibilityChart from "@/components/trends/visibility-chart";
 import { ALL_COUNTRIES, useAppCountry, useCurrentApp } from "@/hooks/use-app";
@@ -127,6 +128,7 @@ export default function OverviewView() {
         <OverviewKpis data={summary} />
         {app && (
           <>
+            <StoreRow appId={appId} />
             <PosthogRow appId={appId} />
             <TrendCharts appId={appId} country={country} />
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">

@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  ChartColumnIncreasing,
   Compass,
   Globe2,
   KeyRound,
@@ -24,6 +25,7 @@ export type NavItem = { slug: string; label: string; icon: LucideIcon };
 
 export const APP_NAV: NavItem[] = [
   { slug: "", label: "Overview", icon: LayoutGrid },
+  { slug: "store-analytics", label: "App Store Analytics", icon: ChartColumnIncreasing },
   { slug: "keywords", label: "Keywords", icon: KeyRound },
   { slug: "impact", label: "Keyword Impact", icon: TrendingUp },
   { slug: "trends", label: "Rankings & Trends", icon: LineChart },

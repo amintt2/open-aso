@@ -1,7 +1,8 @@
 export type ImpactDays = 7 | 30 | 90;
 export type ImpactDemoMode = "never" | "auto" | "only";
 export type Confidence = "high" | "medium" | "low";
-export type ObservedSource = "posthog" | "sdk" | "demo" | "none";
+export type ObservedSource = "posthog" | "sdk" | "apple" | "demo" | "none";
+export type CalibrationTarget = "apple_search" | "search_share";
 export type SourceState = "connected" | "missing" | "error" | "demo";
 export type PaidRevenueSource = "attributed" | "modelled";
 
@@ -11,6 +12,8 @@ export type ImpactDataSources = {
   sdk: SourceState;
   revenue: SourceState;
   appleAds: SourceState;
+  appleAnalytics?: SourceState;
+  calibration?: CalibrationTarget;
   errors: string[];
 };
 

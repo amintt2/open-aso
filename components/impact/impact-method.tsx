@@ -12,7 +12,16 @@ export default function ImpactMethod({ data }: { data: ImpactResult }) {
   const pct = Math.round(data.searchShare * 100);
   const [value, setValue] = useState(String(pct));
   const [saving, setSaving] = useState(false);
-  const source = data.demo ? "demo installs" : data.dataSources.observed === "posthog" ? "PostHog new users" : data.dataSources.observed === "sdk" ? "Open ASO SDK installs" : null;
+  const source = data.demo
+    ? "demo installs"
+    : data.dataSources.observed === "posthog"
+      ? "PostHog new users"
+      : data.dataSources.observed === "sdk"
+        ? "Open ASO SDK installs"
+        : data.dataSources.observed === "apple"
+          ? "Apple's first-time downloads (App Store Analytics)"
+          : null;
+  const appleSearch = data.dataSources.calibration === "apple_search";
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -43,7 +52,9 @@ export default function ImpactMethod({ data }: { data: ImpactResult }) {
             {source ? `Observed installs come from ${source}` : "No install data is connected, so nothing is calibrated"}; Apple Ads installs for this app&apos;s campaigns are subtracted to get organic installs per country and day.
           </li>
           <li>
-            {pct}% of organic installs are assumed to come from App Store search; the remaining {100 - pct}% is counted as browse &amp; referral.
+            {appleSearch
+              ? "Search installs come straight from Apple: App Store search first-time downloads per territory and day (App Store Analytics), minus Apple Ads installs. Days Apple hasn't published yet use the window's daily average."
+              : `${pct}% of organic installs are assumed to come from App Store search; the remaining ${100 - pct}% is counted as browse & referral.`}
           </li>
           <li>
             Each keyword&apos;s raw potential is its monthly searches (from popularity) × the tap share at its daily rank × 40% conversion. Per country these are scaled by one factor (kept between 0.2× and 5×) so they add up to the search installs; whatever tracked keywords can&apos;t explain shows as other searches.

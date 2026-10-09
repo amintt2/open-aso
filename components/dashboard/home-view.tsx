@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import Button from "@/components/_ui/button";
 import PageHeader from "@/components/shell/page-header";
+import StoreRow from "@/components/store-analytics/store-row";
 import { useApi } from "@/lib/client/api";
 import type { HomeKpis, MoversResult } from "@/lib/dashboard/types";
 import { useUiStore } from "@/stores/ui-store";
@@ -78,6 +79,7 @@ export default function HomeView() {
       />
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 p-4">
         <KpiRow />
+        <StoreRow onlyWithData />
         <PosthogRow />
         <SectionTitle>Apps</SectionTitle>
         <AppsGrid />

@@ -2,6 +2,7 @@ import { getApp } from "@/lib/aso/apps";
 import { listKeywords } from "@/lib/aso/keywords";
 import { normalizeTerm } from "@/lib/aso/scoring";
 import { campaignAppMap } from "@/lib/apple-ads/service";
+import { appleDownloadsByCountry } from "@/lib/asc/analytics/service";
 import { getMapping } from "@/lib/posthog/apps";
 import { isPosthogConfigured } from "@/lib/posthog/client";
 import { newUsersByDay } from "@/lib/posthog/queries";
@@ -83,13 +84,14 @@ async function snapshotsFor(workspaceId: string, appId: number, from: string) {
 }
 
 async function detect(workspaceId: string, appId: number) {
-  const [posthogReady, sdk, revenue, campaigns] = await Promise.all([
+  const [posthogReady, sdk, revenue, campaigns, apple] = await Promise.all([
     (async () => (await isPosthogConfigured(workspaceId)) && !!(await getMapping(workspaceId, appId)))().catch(() => false),
     db.get<{ ok: boolean }>("SELECT EXISTS(SELECT 1 FROM installs WHERE workspace_id = ? AND app_id = ?) AS ok", [workspaceId, appId]),
     db.get<{ ok: boolean }>(`SELECT EXISTS(SELECT 1 FROM revenue_events r WHERE r.workspace_id = ? AND r.app_id = ? AND ${VALID_REVENUE}) AS ok`, [workspaceId, appId]),
     campaignAppMap(workspaceId).then((links) => links.filter((l) => l.appId === appId)),
+    db.get<{ ok: boolean }>("SELECT EXISTS(SELECT 1 FROM asc_analytics_daily WHERE workspace_id = ? AND app_id = ?) AS ok", [workspaceId, appId]),
   ]);
-  return { posthog: posthogReady, sdk: !!sdk?.ok, revenue: !!revenue?.ok, campaigns };
+  return { posthog: posthogReady, sdk: !!sdk?.ok, revenue: !!revenue?.ok, campaigns, apple: !!apple?.ok };
 }
 
 async function posthogObserved(workspaceId: string, appId: number, days: number, dates: string[], countries: string[]) {
@@ -188,6 +190,13 @@ function toModelKeywords(dates: string[], list: KeywordInput[]): ModelKeywordInp
   }));
 }
 
+function fillGaps(series: (number | null)[] | undefined, n: number) {
+  if (!series) return emptySeries(n);
+  const known = series.filter((v): v is number => v != null);
+  const mean = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 0;
+  return series.map((v) => v ?? mean);
+}
+
 function sumSeries(series: Iterable<number[]>) {
   let total = 0;
   for (const s of series) for (const v of s) total += v;
@@ -207,7 +216,7 @@ async function computeLive(workspaceId: string, appId: number, days: ImpactDays,
     popularitySource: k.popularitySource,
     position: k.position,
   }));
-  const nothing = !found.posthog && !found.sdk && !found.revenue && !found.campaigns.length;
+  const nothing = !found.posthog && !found.sdk && !found.revenue && !found.campaigns.length && !found.apple;
   if (demoMode === "only" || (demoMode === "auto" && nothing)) {
     const demo = demoInputs(`impact:${appId}`, dates, searchShare, demoKeywords(sources));
     const model = runModel({
@@ -226,7 +235,7 @@ async function computeLive(workspaceId: string, appId: number, days: ImpactDays,
       revenueAvailable: true,
       model,
       otherCountries: demo.otherCountries,
-      dataSources: { observed: "demo", posthog: "demo", sdk: "demo", revenue: "demo", appleAds: "demo", errors: [] },
+      dataSources: { observed: "demo", posthog: "demo", sdk: "demo", revenue: "demo", appleAds: "demo", appleAnalytics: "demo", calibration: "search_share", errors: [] },
     };
   }
 
@@ -247,20 +256,27 @@ async function computeLive(workspaceId: string, appId: number, days: ImpactDays,
       errors.push(`PostHog: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  const [sdk, ads, attributed, revenue, snapshots] = await Promise.all([
+  const [sdk, ads, attributed, revenue, snapshots, apple] = await Promise.all([
     found.sdk ? sdkInstalls(workspaceId, appId, dates) : null,
     adsInstalls(workspaceId, found.campaigns, app.primaryCountry, dates),
     found.sdk ? sdkAttributed(workspaceId, appId, dates) : new Map<string, { installs: number; revenue: number }>(),
     found.revenue ? revenueByCountry(workspaceId, appId, dates) : new Map<string, number>(),
     snapshotsFor(workspaceId, appId, dates[0]),
+    appleDownloadsByCountry(workspaceId, appId, dates).catch(() => null),
   ]);
   if (observedSource === "none" && sdk) {
     observedByCountry = sdk.observed;
     observedTotal = sdk.total;
     observedSource = "sdk";
   }
-  const calibrated = observedSource !== "none";
   const n = dates.length;
+  const appleUsable = !!apple && apple.knownDays >= Math.max(3, Math.ceil(n / 2));
+  if (observedSource === "none" && apple && appleUsable) {
+    observedByCountry = new Map(countries.map((c) => [c, fillGaps(apple.total.get(c), n)]));
+    observedTotal = fillGaps(apple.allTotal, n).reduce((a, b) => a + b, 0);
+    observedSource = "apple";
+  }
+  const calibrated = observedSource !== "none";
   const paidCountries = new Set([...ads.daily.keys(), ...(sdk?.paid.keys() ?? [])]);
   const paidFor = (country: string) => {
     const a = ads.daily.get(country) ?? emptySeries(n);
@@ -272,6 +288,7 @@ async function computeLive(workspaceId: string, appId: number, days: ImpactDays,
     observed: calibrated ? (observedByCountry.get(country) ?? emptySeries(n)) : null,
     paid: paidFor(country),
     revenue: found.revenue ? (revenue.get(country) ?? 0) : null,
+    search: apple && appleUsable ? fillGaps(apple.search.get(country), n) : null,
   }));
   const keywords: KeywordInput[] = sources.map((k) => {
     const id = `${k.country}|${normalizeTerm(k.term)}`;
@@ -303,6 +320,8 @@ async function computeLive(workspaceId: string, appId: number, days: ImpactDays,
       sdk: found.sdk ? "connected" : "missing",
       revenue: found.revenue ? "connected" : "missing",
       appleAds: found.campaigns.length ? "connected" : "missing",
+      appleAnalytics: appleUsable ? "connected" : "missing",
+      calibration: appleUsable ? "apple_search" : "search_share",
       errors,
     },
   };

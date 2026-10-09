@@ -16,6 +16,7 @@ export const RATE_RULES = {
   workerComplete: { capacity: 40, refillPerHour: 2400 },
   workerUser: { capacity: 120, refillPerHour: 7200 },
   oauthRegister: { capacity: 30, refillPerHour: 60 },
+  storeAnalyticsSync: { capacity: 4, refillPerHour: 4 },
 } satisfies Record<string, RateRule>;
 
 function buckets() {

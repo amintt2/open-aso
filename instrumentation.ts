@@ -16,4 +16,6 @@ export async function register() {
   if (process.env.OPEN_ASO_DISABLE_SCHEDULER === "1") return;
   const { startKeywordScheduler } = await import("@/lib/keywords/scheduler");
   startKeywordScheduler();
+  const { startStoreAnalyticsScheduler } = await import("@/lib/asc/analytics/scheduler");
+  startStoreAnalyticsScheduler();
 }

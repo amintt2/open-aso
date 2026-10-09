@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Check, CircleAlert, FlaskConical, Plus } from "lucide-react";
+import { Apple, Check, CircleAlert, FlaskConical, Plus } from "lucide-react";
 import type { ImpactDataSources, SourceState } from "@/lib/impact/types";
 import { cn } from "@/lib/utils";
 
-const SOURCES: { key: keyof Omit<ImpactDataSources, "observed" | "errors">; label: string; href: string; use: string }[] = [
+const SOURCES: { key: keyof Omit<ImpactDataSources, "observed" | "errors" | "calibration">; label: string; href: string; use: string }[] = [
   { key: "posthog", label: "PostHog", href: "/integrations", use: "new users per country" },
   { key: "sdk", label: "Open ASO SDK", href: "/integrations", use: "installs by source" },
   { key: "revenue", label: "RevenueCat / Superwall", href: "/integrations", use: "revenue per country" },
   { key: "appleAds", label: "Apple Ads", href: "/apple-ads", use: "paid installs per keyword" },
+  { key: "appleAnalytics", label: "App Store Analytics", href: "store-analytics", use: "App Store search downloads per territory" },
 ];
 
 const ICON: Record<SourceState, typeof Check> = { connected: Check, missing: Plus, error: CircleAlert, demo: FlaskConical };
@@ -19,9 +20,9 @@ export default function ImpactSources({ sources }: { sources: ImpactDataSources 
     <div className="flex flex-wrap items-center gap-2">
       <span className="caption-style text-subtle">Data</span>
       {SOURCES.map((s) => {
-        const state = sources[s.key];
+        const state = sources[s.key] ?? "missing";
         const Icon = ICON[state];
-        const used = (s.key === "posthog" && sources.observed === "posthog") || (s.key === "sdk" && sources.observed === "sdk");
+        const used = (s.key === "posthog" && sources.observed === "posthog") || (s.key === "sdk" && sources.observed === "sdk") || (s.key === "appleAnalytics" && sources.observed === "apple");
         const title = state === "connected" ? `${s.label}: ${s.use}${used ? " (used for observed installs)" : ""}` : state === "missing" ? `Connect ${s.label} for ${s.use}` : state === "error" ? `${s.label} could not be read` : `${s.label}: demo data`;
         const chip = (
           <span
@@ -46,6 +47,15 @@ export default function ImpactSources({ sources }: { sources: ImpactDataSources 
           </Link>
         );
       })}
+      {sources.calibration === "apple_search" && (
+        <span
+          title="Keyword estimates are scaled so they add up to Apple's App Store search first-time downloads per territory and day (minus Apple Ads installs)."
+          className="caption-style inline-flex h-[24px] items-center gap-1.5 rounded-full border border-(--tag-blue-border) bg-(--tag-blue-bg) px-2 text-(--tag-blue-text)"
+        >
+          <Apple aria-hidden className="size-3" />
+          Calibrated on App Store search downloads (Apple)
+        </span>
+      )}
     </div>
   );
 }

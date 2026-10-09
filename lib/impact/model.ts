@@ -28,6 +28,7 @@ export type ModelCountryInput = {
   observed: number[] | null;
   paid: number[];
   revenue: number | null;
+  search?: number[] | null;
 };
 
 export type ModelInput = {
@@ -134,17 +135,24 @@ export function runModel(input: ModelInput): ModelOutput {
     const organicDaily = c.observed ? c.observed.map((v, i) => Math.max(0, v - paidDaily[i])) : null;
     const observed = c.observed ? sum(c.observed) : null;
     const organic = organicDaily ? sum(organicDaily) : null;
-    const calibration = organic != null ? calibrationFactor(searchShare, organic, rawTotal) : { alpha: 1, clamped: null };
+    const searchDaily = c.search && c.search.length === n ? c.search.map((v, i) => Math.max(0, v - paidDaily[i])) : null;
+    const searchTarget = searchDaily ? sum(searchDaily) : null;
+    const calibration =
+      searchTarget != null ? calibrationFactor(1, searchTarget, rawTotal) : organic != null ? calibrationFactor(searchShare, organic, rawTotal) : { alpha: 1, clamped: null };
     const alpha = calibration.alpha ?? 0;
     const est = raw.map((series) => series.map((v) => v * alpha));
     const estTotals = est.map(sum);
     const explained = sum(estTotals);
-    const searchEstimate = organic != null ? searchShare * organic : null;
+    const searchEstimate = searchTarget ?? (organic != null ? searchShare * organic : null);
     const unexplained = searchEstimate != null ? Math.max(0, searchEstimate - explained) : null;
-    const browse = organic != null ? (1 - searchShare) * organic : null;
+    const browse = searchTarget != null ? (organic != null ? Math.max(0, organic - searchTarget) : null) : organic != null ? (1 - searchShare) * organic : null;
     const explainedDaily = dates.map((_, i) => sum(est.map((s) => s[i])));
-    const otherDaily = organicDaily ? organicDaily.map((v, i) => Math.max(0, searchShare * v - explainedDaily[i])) : null;
-    const browseDaily = organicDaily ? organicDaily.map((v) => (1 - searchShare) * v) : null;
+    const otherDaily = searchDaily
+      ? searchDaily.map((v, i) => Math.max(0, v - explainedDaily[i]))
+      : organicDaily
+        ? organicDaily.map((v, i) => Math.max(0, searchShare * v - explainedDaily[i]))
+        : null;
+    const browseDaily = searchDaily ? (organicDaily ? organicDaily.map((v, i) => Math.max(0, v - searchDaily[i])) : null) : organicDaily ? organicDaily.map((v) => (1 - searchShare) * v) : null;
     const arpu = !input.revenueAvailable
       ? null
       : observed != null && observed >= MIN_ARPU_USERS && c.revenue != null
@@ -198,7 +206,7 @@ export function runModel(input: ModelInput): ModelOutput {
       explained,
       unexplained,
       browse,
-      alpha: organic != null ? calibration.alpha : null,
+      alpha: organic != null || searchTarget != null ? calibration.alpha : null,
       alphaClamped: calibration.clamped,
       arpu: arpu?.value ?? null,
       arpuSource: arpu?.source ?? null,
