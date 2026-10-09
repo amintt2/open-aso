@@ -5,6 +5,7 @@ import {
   Globe2,
   KeyRound,
   Lightbulb,
+  LineChart,
   Megaphone,
   MessageSquareText,
   PlugZap,
@@ -22,6 +23,7 @@ export type NavItem = { slug: string; label: string; icon: LucideIcon };
 export const APP_NAV: NavItem[] = [
   { slug: "keywords", label: "Keywords", icon: KeyRound },
   { slug: "impact", label: "Keyword Impact", icon: TrendingUp },
+  { slug: "trends", label: "Rankings & Trends", icon: LineChart },
   { slug: "suggestions", label: "Suggestions", icon: Lightbulb },
   { slug: "competitors", label: "Competitors", icon: Swords },
   { slug: "opportunities", label: "Country Opportunities", icon: Globe2 },

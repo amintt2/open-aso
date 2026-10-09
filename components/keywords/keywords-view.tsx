@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Download,
   KeyRound,
+  LineChart,
   Loader2,
   Plus,
   RefreshCw,
@@ -382,6 +383,17 @@ export default function KeywordsView() {
               allOption={{ value: ALL_COUNTRIES, label: "All countries" }}
               className="max-w-[170px] min-w-[120px] sm:min-w-[150px]"
             />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-[30px]"
+              href={`/apps/${appId}/trends`}
+              aria-label="Rankings & Trends"
+              title="Rankings & Trends for this country"
+            >
+              <LineChart aria-hidden className="size-3.5" />
+              <span className="hidden md:inline">Trends</span>
+            </Button>
             <Button
               variant="secondary"
               size="icon"
