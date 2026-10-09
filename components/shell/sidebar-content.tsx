@@ -17,7 +17,7 @@ import NavLink from "./nav-link";
 import UserMenu from "./user-menu";
 import WorkspaceSwitcher from "./workspace-switcher";
 import WorkerStatus from "@/components/worker/worker-status";
-import { APP_NAV, GLOBAL_NAV } from "@/lib/client/nav";
+import { APP_NAV, appHref, GLOBAL_NAV, isNavActive } from "@/lib/client/nav";
 import { useApi } from "@/lib/client/api";
 import type { TrackedApp } from "@/lib/client/types";
 import type { Me } from "@/lib/workspace/types";
@@ -33,7 +33,9 @@ export default function SidebarContent() {
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
   const currentId = params.appId ? Number(params.appId) : apps[0]?.id;
   const current = apps.find((a) => a.id === currentId);
-  const section = pathname.split("/")[3] ?? "keywords";
+  const section = pathname.startsWith("/apps/")
+    ? (pathname.split("/")[3] ?? "")
+    : null;
   const close = () => setSidebarOpen(false);
 
   return (
@@ -86,7 +88,10 @@ export default function SidebarContent() {
                 key={app.id}
                 onSelect={() => {
                   router.push(
-                    `/apps/${app.id}/${APP_NAV.some((n) => n.slug === section) ? section : "keywords"}`,
+                    appHref(
+                      app.id,
+                      APP_NAV.find((n) => n.slug === section)?.slug ?? "",
+                    ),
                   );
                   close();
                 }}
@@ -117,13 +122,11 @@ export default function SidebarContent() {
             >
               {APP_NAV.map((item) => (
                 <NavLink
-                  key={item.slug}
-                  href={`/apps/${current.id}/${item.slug}`}
+                  key={item.slug || "overview"}
+                  href={appHref(current.id, item.slug)}
                   icon={item.icon}
                   label={item.label}
-                  active={pathname.startsWith(
-                    `/apps/${current.id}/${item.slug}`,
-                  )}
+                  active={isNavActive(pathname, appHref(current.id, item.slug))}
                   count={
                     item.slug === "keywords" ? current.keywordCount : undefined
                   }
@@ -139,7 +142,7 @@ export default function SidebarContent() {
                 href={item.href}
                 icon={item.icon}
                 label={item.label}
-                active={pathname.startsWith(item.href)}
+                active={isNavActive(pathname, item.href)}
                 onNavigate={close}
               />
             ))}

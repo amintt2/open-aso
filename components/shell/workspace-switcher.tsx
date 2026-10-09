@@ -2,6 +2,7 @@
 
 import { reloadTo } from "@/lib/workspace/navigate";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, Mail, Plus, Settings2 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,30 +44,40 @@ export default function WorkspaceSwitcher({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="none"
-            className="h-11 w-full justify-start gap-2 rounded-lg px-1.5 font-normal"
-            aria-label="Switch workspace"
+        <div className="flex items-center gap-0.5">
+          <Link
+            href="/"
+            onClick={onNavigate}
+            aria-label="Dashboard"
+            title="Dashboard"
+            className="focus-visible:ring-ring/60 shrink-0 rounded-lg p-1.5 outline-none hover:bg-white/6 focus-visible:ring-2"
           >
             <WorkspaceMark name={active?.name ?? "Open ASO"} />
-            <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-              <span className="lead-style text-foreground w-full truncate text-left font-medium tracking-[-0.01em]">
-                {active?.name ?? (me ? "No workspace" : "Loading…")}
+          </Link>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="none"
+              className="h-11 min-w-0 flex-1 justify-start gap-2 rounded-lg px-1.5 font-normal"
+              aria-label="Switch workspace"
+            >
+              <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                <span className="lead-style text-foreground w-full truncate text-left font-medium tracking-[-0.01em]">
+                  {active?.name ?? (me ? "No workspace" : "Loading…")}
+                </span>
+                <span className="caption-style text-subtle w-full truncate text-left">
+                  {active
+                    ? `${ROLE_LABEL[active.role]} · ${active.memberCount} ${active.memberCount === 1 ? "member" : "members"}`
+                    : "Open ASO"}
+                </span>
               </span>
-              <span className="caption-style text-subtle w-full truncate text-left">
-                {active
-                  ? `${ROLE_LABEL[active.role]} · ${active.memberCount} ${active.memberCount === 1 ? "member" : "members"}`
-                  : "Open ASO"}
-              </span>
-            </span>
-            <ChevronsUpDown
-              aria-hidden
-              className="text-subtle size-3.5 shrink-0"
-            />
-          </Button>
-        </DropdownMenuTrigger>
+              <ChevronsUpDown
+                aria-hidden
+                className="text-subtle size-3.5 shrink-0"
+              />
+            </Button>
+          </DropdownMenuTrigger>
+        </div>
         <DropdownMenuContent
           align="start"
           className="w-(--radix-dropdown-menu-trigger-width) min-w-[230px]"

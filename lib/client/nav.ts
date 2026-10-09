@@ -4,6 +4,8 @@ import {
   Compass,
   Globe2,
   KeyRound,
+  LayoutDashboard,
+  LayoutGrid,
   Lightbulb,
   LineChart,
   Megaphone,
@@ -21,6 +23,7 @@ import {
 export type NavItem = { slug: string; label: string; icon: LucideIcon };
 
 export const APP_NAV: NavItem[] = [
+  { slug: "", label: "Overview", icon: LayoutGrid },
   { slug: "keywords", label: "Keywords", icon: KeyRound },
   { slug: "impact", label: "Keyword Impact", icon: TrendingUp },
   { slug: "trends", label: "Rankings & Trends", icon: LineChart },
@@ -33,6 +36,7 @@ export const APP_NAV: NavItem[] = [
 ];
 
 export const GLOBAL_NAV: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/explore", label: "Explore", icon: Compass },
   { href: "/apple-ads", label: "Apple Ads", icon: Megaphone },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -42,3 +46,11 @@ export const GLOBAL_NAV: { href: string; label: string; icon: LucideIcon }[] = [
 ];
 
 export const ACTIVITY_ICON = Activity;
+
+export function appHref(appId: number, slug: string) {
+  return slug ? `/apps/${appId}/${slug}` : `/apps/${appId}`;
+}
+
+export function isNavActive(pathname: string, href: string) {
+  return href === "/" || /^\/apps\/[^/]+$/.test(href) ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+}

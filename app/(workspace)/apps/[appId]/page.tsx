@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
+import OverviewView from "@/components/dashboard/overview/overview-view";
 
-export default async function AppIndex({ params }: { params: Promise<{ appId: string }> }) {
-  const { appId } = await params;
-  redirect(`/apps/${appId}/keywords`);
+export default function Page() {
+  return <OverviewView />;
 }
