@@ -10,7 +10,7 @@ export default function Sidebar() {
   const setOpen = useUiStore((s) => s.setSidebarOpen);
   return (
     <>
-      <aside className="border-sidebar-border bg-sidebar relative hidden w-(--sidebar-width) shrink-0 border-r lg:flex lg:flex-col">
+      <aside className="border-sidebar-border bg-sidebar relative hidden h-full min-h-0 w-(--sidebar-width) shrink-0 overflow-clip border-r lg:flex lg:flex-col">
         <SidebarContent />
         <SidebarResizer />
       </aside>

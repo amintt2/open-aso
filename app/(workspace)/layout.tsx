@@ -16,9 +16,9 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
     if (invite) redirect(`/invite/${invite.id}`);
   }
   return (
-    <main className="flex h-dvh max-w-full overflow-hidden">
+    <main className="fixed inset-0 flex overflow-clip overscroll-none">
       <Sidebar />
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</section>
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip overflow-y-auto overscroll-contain">{children}</section>
       <AddAppDialog />
       <FetchWorker />
       <Toaster theme="dark" position="bottom-right" toastOptions={{ className: "!bg-popover !border-line-strong !text-foreground" }} />
