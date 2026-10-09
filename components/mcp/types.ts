@@ -1,8 +1,10 @@
 import type { McpConfig, McpStats } from "@/lib/mcp/config";
+import type { McpConnect } from "@/lib/mcp/connect";
 import type { ToolInfo, ToolLayer } from "@/lib/mcp/define";
 
 export type McpSettings = McpConfig & {
   canManage: boolean;
+  connect: McpConnect;
   layers: { id: ToolLayer; label: string; description: string }[];
   tools: ToolInfo[];
 };
@@ -26,3 +28,5 @@ export type McpClient = {
 };
 
 export type McpClients = { canManage: boolean; clients: McpClient[] };
+
+export type HomeClaude = McpConnect & { enabled: boolean; canManage: boolean; connected: boolean };

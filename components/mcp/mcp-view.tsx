@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { ChevronRight, Power, PowerOff } from "lucide-react";
 import { toast } from "sonner";
 import Tag from "@/components/_ui/tag";
@@ -25,15 +25,11 @@ const SECTIONS = [
   { id: "advanced", label: "Static token" },
 ];
 
-const noop = () => () => {};
-
 export default function McpView() {
   const { data: settings, mutate } = useApi<McpSettings>("/api/mcp/settings");
   const { data: status } = useApi<McpStatus>("/api/mcp/status", { refreshInterval: 5000 });
-  const origin = useSyncExternalStore(noop, () => window.location.origin, () => "");
   const [busy, setBusy] = useState(false);
   const [token, setToken] = useState<string | null>(null);
-  const url = `${origin}/api/mcp`;
 
   async function run<T>(action: () => Promise<T>, message: string) {
     setBusy(true);
@@ -97,7 +93,7 @@ export default function McpView() {
             <>
               {!settings.canManage && <p className="caption-style text-subtle">Only workspace owners and admins can change MCP settings or tokens.</p>}
               <ServerCard enabled={enabled} status={status} saving={busy || !settings.canManage} onToggle={(next) => update({ enabled: next }, next ? "MCP server enabled" : "MCP server disabled")} />
-              <ConnectCard url={url} origin={origin} enabled={enabled} />
+              <ConnectCard connect={settings.connect} enabled={enabled} onOpenClaude={() => !enabled && settings.canManage && update({ enabled: true }, "MCP server enabled")} />
               <ClientsCard />
               <WritesCard allowWrites={settings.allowWrites} saving={busy || !settings.canManage} onToggle={(next) => update({ allowWrites: next }, next ? "Write tools allowed" : "Write tools blocked")} />
               <ToolsCard layers={settings.layers} tools={settings.tools} allowWrites={settings.allowWrites} />
@@ -111,7 +107,7 @@ export default function McpView() {
                 </summary>
                 <div className="flex flex-col gap-4 px-4 pb-4">
                   <AccessCard tokenSet={settings.tokenSet} hint={settings.tokenHint} lastUsedAt={settings.tokenLastUsedAt} revealed={token} busy={busy} canManage={settings.canManage} onRotate={rotate} onClear={clear} />
-                  <SetupCard url={url} tokenRequired token={token} />
+                  <SetupCard url={settings.connect.url} tokenRequired token={token} />
                 </div>
               </details>
             </>

@@ -2,6 +2,8 @@
 
 import { Plus } from "lucide-react";
 import Button from "@/components/_ui/button";
+import { AddToClaudeButton, ClaudeConnectBanner, useClaudeConnect } from "@/components/mcp/claude-connect";
+import type { HomeClaude } from "@/components/mcp/types";
 import PageHeader from "@/components/shell/page-header";
 import StoreRow from "@/components/store-analytics/store-row";
 import { useApi } from "@/lib/client/api";
@@ -60,24 +62,35 @@ function Movers() {
   );
 }
 
-export default function HomeView() {
+export default function HomeView({ claude }: { claude: HomeClaude }) {
   const setAddAppOpen = useUiStore((s) => s.setAddAppOpen);
+  const { onOpen } = useClaudeConnect(claude);
   return (
     <>
       <PageHeader
         title="Dashboard"
         actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setAddAppOpen(true)}
-          >
-            <Plus aria-hidden className="size-3.5" />
-            Add app
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddAppOpen(true)}
+            >
+              <Plus aria-hidden className="size-3.5" />
+              Add app
+            </Button>
+            {claude.connected && (
+              <AddToClaudeButton
+                href={claude.claudeUrl}
+                size="sm"
+                onOpen={onOpen}
+              />
+            )}
+          </>
         }
       />
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 p-4">
+        {!claude.connected && <ClaudeConnectBanner claude={claude} />}
         <KpiRow />
         <StoreRow onlyWithData />
         <PosthogRow />

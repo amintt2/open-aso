@@ -25,7 +25,7 @@ Popularity comes from Apple's own Search Ads popularity (Apple Ads Platform API)
 
 The MCP server lives at `https://aso.french-web.com/api/mcp` (or `<your APP_URL>/api/mcp` when self-hosting). Clients sign in with OAuth: a browser page opens, you pick the workspace and approve. A workspace admin first enables the server (and, optionally, write tools) in **MCP Server**; connected clients are listed there and can be disconnected.
 
-- **Claude Desktop / claude.ai**: Settings → Connectors → Add custom connector, paste the URL.
+- **Claude Desktop / claude.ai**: click **Add to Claude** on the dashboard or the MCP Server page — claude.ai opens the *Add custom connector* dialog with the name and URL pre-filled (Claude shows an "external link" notice; click Continue, then sign in). Manually: Settings → Connectors → Add custom connector, paste the URL.
 - **Claude Code plugin** (tools + slash commands such as `/open-aso:keywords`, `/open-aso:audit`, `/open-aso:apple-ads` + ASO skills):
   ```
   /plugin marketplace add amintt2/open-aso

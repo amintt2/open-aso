@@ -2,11 +2,13 @@
 
 import { Sparkles, Plus } from "lucide-react";
 import Button from "@/components/_ui/button";
+import { ClaudeConnectBanner } from "@/components/mcp/claude-connect";
+import type { HomeClaude } from "@/components/mcp/types";
 import EmptyState from "./empty-state";
 import PageHeader from "./page-header";
 import { useUiStore } from "@/stores/ui-store";
 
-export default function Welcome() {
+export default function Welcome({ claude }: { claude: HomeClaude }) {
   const setAddAppOpen = useUiStore((s) => s.setAddAppOpen);
   return (
     <>
@@ -22,6 +24,9 @@ export default function Welcome() {
           </Button>
         }
       />
+      <div className="mx-auto w-full max-w-[960px] px-4 pb-6">
+        <ClaudeConnectBanner claude={claude} />
+      </div>
     </>
   );
 }

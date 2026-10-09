@@ -1,11 +1,14 @@
 export const HOSTED_ORIGIN = "https://aso.french-web.com";
 export const PLUGIN_REPO = "amintt2/open-aso";
 export const CLAUDE_CONNECTORS_APP = "claude://claude.ai/customize/connectors?modal=add-custom-connector";
-export const CLAUDE_CONNECTORS_WEB = "https://claude.ai/customize/connectors?modal=add-custom-connector";
 
 export function cursorDeepLink(url: string) {
   const config = btoa(JSON.stringify({ url }));
   return `cursor://anysphere.cursor-deeplink/mcp/install?name=open-aso&config=${encodeURIComponent(config)}`;
+}
+
+export function cursorConfig(url: string) {
+  return JSON.stringify({ mcpServers: { "open-aso": { url } } }, null, 2);
 }
 
 export function installCommands(url: string) {
