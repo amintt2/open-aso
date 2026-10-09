@@ -164,7 +164,11 @@ async function syncSnapshot(workspaceId: string, appId: number, t: Transport, re
   pending = pending.sort((a, b) => (a.processingDate < b.processingDate ? -1 : 1));
   const batch = pending.slice(0, SNAPSHOT_BUDGET);
   const rows = await processAll(workspaceId, appId, t, batch, () => true);
-  const done = pending.length <= SNAPSHOT_BUDGET;
+  const seenBefore = await db.get<{ n: number }>(
+    "SELECT count(*) AS n FROM asc_report_instances_seen WHERE workspace_id = ? AND request_id = ?",
+    [workspaceId, request.requestId],
+  );
+  const done = pending.length <= SNAPSHOT_BUDGET && (batch.length > 0 || (seenBefore?.n ?? 0) > 0);
   await db.run(`UPDATE asc_report_requests SET last_synced_at = now(), last_error = NULL${done ? ", completed_at = now()" : ""} WHERE workspace_id = ? AND request_id = ?`, [
     workspaceId,
     request.requestId,
