@@ -2,6 +2,7 @@ import { z } from "zod";
 import { HttpError } from "@/lib/server/http";
 import { logIntegrationEvent } from "./log";
 import {
+  appIdFromProduct,
   appIdFromRef,
   candidateUser,
   isoFromMs,
@@ -126,6 +127,7 @@ export async function handleRevenueCat(
   const appId =
     (await appIdFromRef(workspaceId, appRef)) ??
     user.appId ??
+    (await appIdFromProduct(workspaceId, event.new_product_id ?? event.product_id)) ??
     (await soleOwnedAppId(workspaceId));
   const occurredAt = isoFromMs(
     [

@@ -42,7 +42,7 @@ export default function TrendsKpis({ start, end }: { start: TrendKpis | null; en
       <KpiTile
         source="estimate"
         label="Est. search installs / day"
-        hint="Installs per day the model expects from your current ranks: searches per day × the share of taps your position usually gets × a 40% install rate. Compare with Apple's first-time downloads in Traffic."
+        hint="Installs per day the model expects from your current ranks: searches per day × a tap share that decays with position down to #200 × a 40% install rate, scaled so the total matches the downloads Apple attributes to App Store search over the last 14 days. Compare with Apple's first-time downloads in Traffic."
         value={approxInstalls(end?.installs)}
         delta={
           <DeltaLine
@@ -57,7 +57,7 @@ export default function TrendsKpis({ start, end }: { start: TrendKpis | null; en
       />
       <KpiTile
         source="estimate"
-        label="Search reach"
+        label="Top-10 share"
         hint={REACH_HINT}
         value={formatReach(end?.reach)}
         delta={

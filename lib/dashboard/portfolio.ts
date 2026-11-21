@@ -3,6 +3,7 @@ import { listKeywords } from "@/lib/aso/keywords";
 import { cached, wsKey } from "@/lib/server/cache";
 import { getTraffic, trafficDays } from "@/lib/traffic/service";
 import { dailySearchInstalls } from "@/lib/trends/compute";
+import { getTrends } from "@/lib/trends/service";
 import type { TrafficResult, TrafficStepKey } from "@/lib/traffic/types";
 import { demoPortfolio } from "./portfolio-demo";
 import { splitCountries, sumSteps } from "./portfolio-math";
@@ -44,10 +45,11 @@ function appFrom(app: TrackedApp, t: TrafficResult, dates: string[]): PortfolioA
 }
 
 async function topKeywords(workspaceId: string, app: TrackedApp): Promise<PortfolioKeyword[]> {
-  const list = await listKeywords(workspaceId, app.id);
+  const [list, trends] = await Promise.all([listKeywords(workspaceId, app.id), getTrends(workspaceId, app.id, { country: "all", days: 30 }).catch(() => null)]);
+  const factor = trends?.calibration?.factor ?? 1;
   return list
     .filter((k) => k.position != null && k.relevanceCategory !== "unrelated" && k.relevanceCategory !== "brand")
-    .map((k) => ({ id: app.id, app: app.name, term: k.term, country: k.country, position: k.position, popularity: k.popularity, estInstalls: Math.round(dailySearchInstalls(k.popularity, k.country, k.position) * 100) / 100 }))
+    .map((k) => ({ id: app.id, app: app.name, term: k.term, country: k.country, position: k.position, popularity: k.popularity, estInstalls: Math.round(dailySearchInstalls(k.popularity, k.country, k.position) * factor * 100) / 100 }))
     .sort((a, b) => b.estInstalls - a.estInstalls || (a.position ?? 999) - (b.position ?? 999))
     .slice(0, KEYWORD_LIMIT);
 }

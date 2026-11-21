@@ -65,7 +65,7 @@ const big = "text-[15px] leading-none font-medium tabular-nums";
 function metricCell(app: PortfolioApp, c: Column, color: string) {
   if (c.key === "conversion") return app.conversion.value == null ? <span className="caption-style text-subtle">{c.missing}</span> : <><span className={big}>{formatPercent(app.conversion.value, 2)}</span><Delta v={app.conversion} points /></>;
   if (c.key === "top10") return app.keywords ? <><span className={big}>{app.top10} <span className="text-subtle font-normal">/ {app.keywords}</span></span><span className="caption-style text-subtle">today</span></> : <span className="caption-style text-subtle">{c.missing}</span>;
-  if (c.key === "estPerDay") return app.estPerDay == null ? <span className="caption-style text-subtle">{c.missing}</span> : <><span className={big}>{approxInstalls(app.estPerDay)}</span><span className="caption-style text-subtle">reach {app.reach == null ? "—" : `${app.reach.toFixed(1)}%`}</span></>;
+  if (c.key === "estPerDay") return app.estPerDay == null ? <span className="caption-style text-subtle">{c.missing}</span> : <><span className={big}>{approxInstalls(app.estPerDay)}</span><span className="caption-style text-subtle">top 10 {app.reach == null ? "—" : `${app.reach.toFixed(1)}%`}</span></>;
   const v = app.steps[c.key];
   if (v.value == null) return <span className="caption-style text-subtle">{c.missing}</span>;
   const text = c.key === "revenue" ? formatUsd(v.value) : formatCompact(v.value);

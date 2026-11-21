@@ -127,14 +127,11 @@ export function monthlySearches(popularity: number, country: string) {
   return Math.round(Math.pow(10, 1 + popularity * 0.055) * marketSize(country));
 }
 
-const TAP_SHARE = [0.3, 0.15, 0.09, 0.06, 0.045, 0.035, 0.03, 0.025, 0.02, 0.018];
+export const TAP_CURVE = { first: 0.3, decay: 1.3, last: 200 };
 
 export function tapShare(position: number | null) {
-  if (!position || position < 1) return 0;
-  if (position <= 10) return TAP_SHARE[position - 1];
-  if (position <= 25) return 0.01;
-  if (position <= 50) return 0.003;
-  return 0;
+  if (!position || position < 1 || position > TAP_CURVE.last) return 0;
+  return TAP_CURVE.first * Math.pow(position, -TAP_CURVE.decay);
 }
 
 export function keywordDownloads(popularity: number, country: string, position: number | null) {

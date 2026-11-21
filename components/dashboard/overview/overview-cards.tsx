@@ -58,7 +58,7 @@ export function OverviewKpis({ data }: { data: OverviewSummary | undefined }) {
         source="estimate"
         label="Est. search installs / day"
         value={data.searchInstalls ? approx(data.searchInstalls.current) : "—"}
-        hint="Installs per day the model expects from your current ranks: searches per day × the share of taps a rank gets × 40% install rate, averaged over 7 days. Apple's first-time downloads in the funnel above are the real number."
+        hint="Installs per day the model expects from your current ranks: searches per day × a tap share that decays with position down to #200 × 40% install rate, scaled so the total matches the downloads Apple attributes to App Store search over the last 14 days, averaged over 7 days. Apple's first-time downloads in the funnel above are the real number."
         delta={
           data.searchInstalls ? (
             <PctDelta period={data.searchInstalls} />
@@ -69,7 +69,7 @@ export function OverviewKpis({ data }: { data: OverviewSummary | undefined }) {
       />
       <KpiTile
         source="estimate"
-        label="Search reach"
+        label="Top-10 share"
         value={formatReach(data.searchReach?.current)}
         hint={REACH_HINT}
         delta={

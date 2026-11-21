@@ -12,7 +12,7 @@ type Mode = "installs" | "reach";
 
 const MODES: { key: Mode; label: string }[] = [
   { key: "installs", label: "Installs/day" },
-  { key: "reach", label: "Search reach %" },
+  { key: "reach", label: "Top-10 share %" },
 ];
 
 const MOVED_LIMIT = 5;
@@ -71,7 +71,7 @@ export function WhatMoved({ contributors, appId, since, onOpen }: { contributors
                   <span aria-hidden>{flagOf(c.country)}</span>
                   <span className="truncate">{c.term}</span>
                   {!c.target && (
-                    <span className="caption-style text-subtle shrink-0" title="Not in your title, subtitle or keyword field, so it does not count in search reach">
+                    <span className="caption-style text-subtle shrink-0" title="Not in your title, subtitle or keyword field, so it does not count in the top-10 share">
                       not in metadata
                     </span>
                   )}
@@ -142,12 +142,12 @@ export default function SearchChart({
       title="Estimated search installs"
       description={
         mode === "installs"
-          ? "Installs per day the model expects from your current ranks: searches per day × the share of taps a rank gets × 40% install rate. Estimate, not Apple data."
+          ? "Installs per day the model expects from your current ranks: searches per day × a tap share that decays with position down to #200 × 40% install rate, scaled so the total matches the downloads Apple attributes to App Store search over the last 14 days. Estimate, not Apple data."
           : REACH_HINT
       }
       actions={<Segmented label="Search metric" value={mode} options={MODES} onChange={setMode} />}
     >
-      <div className="h-[220px]" role="img" aria-label={`${mode === "installs" ? "Estimated search installs per day" : "Search reach"} over the last ${days} days`}>
+      <div className="h-[220px]" role="img" aria-label={`${mode === "installs" ? "Estimated search installs per day" : "Top-10 share"} over the last ${days} days`}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 16, right: 8, bottom: 0, left: -12 }}>
             <defs>
@@ -185,7 +185,7 @@ export default function SearchChart({
                     if (!p.tracked) return [{ label: "No data yet", value: "" }];
                     return [
                       { label: "Est. search installs/day", value: approxInstalls(p.installs), color: mode === "installs" ? SEARCH_COLOR : undefined },
-                      { label: "Search reach", value: formatReach(p.reach), color: mode === "reach" ? SEARCH_COLOR : undefined },
+                      { label: "Top-10 share", value: formatReach(p.reach), color: mode === "reach" ? SEARCH_COLOR : undefined },
                       { label: "Keywords in top 10", value: String(p.top3 + p.top10) },
                       { label: "Keywords in metadata", value: `${p.targets} of ${p.tracked}` },
                       ...(byDate.has(p.date) ? [{ label: "Released", value: (byDate.get(p.date) ?? []).map((v) => `v${v}`).join(", ") }] : []),

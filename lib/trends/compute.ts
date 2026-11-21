@@ -38,6 +38,39 @@ export function dailySearchInstalls(popularity: number | null, country: string, 
   return (monthlySearches(popularity, country) / 30) * tapShare(position) * TAP_TO_INSTALL;
 }
 
+export function searchDemand(popularity: number | null, country: string) {
+  return popularity == null ? 0 : monthlySearches(popularity, country) / 30;
+}
+
+export const CALIBRATION_LIMITS = { min: 0.2, max: 30, minApple: 5, minDays: 7, window: 14 };
+
+export function calibrationFactor(modelDaily: readonly (number | null)[], appleDaily: readonly (number | null)[]) {
+  let model = 0;
+  let apple = 0;
+  let days = 0;
+  for (let i = modelDaily.length - 1; i >= 0 && days < CALIBRATION_LIMITS.window; i--) {
+    const m = modelDaily[i];
+    const a = appleDaily[i];
+    if (m == null || a == null) continue;
+    model += m;
+    apple += a;
+    days++;
+  }
+  if (days < CALIBRATION_LIMITS.minDays || apple < CALIBRATION_LIMITS.minApple || model <= 0) return null;
+  return { factor: round(Math.min(CALIBRATION_LIMITS.max, Math.max(CALIBRATION_LIMITS.min, apple / model)), 2), model: round(model, 1), apple, days };
+}
+
+export function scaleInstalls<T extends { points: TrendPoint[]; countries: TrendCountry[]; contributors: TrendContributor[] }>(result: T, factor: number): T {
+  if (factor === 1) return result;
+  const f = (n: number) => round(n * factor, 2);
+  return {
+    ...result,
+    points: result.points.map((p) => ({ ...p, installs: f(p.installs), installsRaw: p.installsRaw == null ? p.installsRaw : f(p.installsRaw) })),
+    countries: result.countries.map((c) => ({ ...c, installs: f(c.installs), installsStart: f(c.installsStart), bestKeyword: c.bestKeyword && { ...c.bestKeyword, installs: f(c.bestKeyword.installs) } })),
+    contributors: result.contributors.map((c) => ({ ...c, startInstalls: f(c.startInstalls), endInstalls: f(c.endInstalls), installsChange: f(c.installsChange) })),
+  };
+}
+
 export function rankedPosition(position: number | null) {
   return position != null && position >= 1 && position < UNRANKED ? position : null;
 }
@@ -78,8 +111,8 @@ export function aggregateDay(keywords: readonly TrendKeyword[], index: number, d
   let tracked = 0;
   let installs = 0;
   let targets = 0;
-  let targetInstalls = 0;
-  let targetBest = 0;
+  let targetDemand = 0;
+  let targetTop10 = 0;
   let positionSum = 0;
   let ranked = 0;
   for (const k of keywords) {
@@ -96,8 +129,9 @@ export function aggregateDay(keywords: readonly TrendKeyword[], index: number, d
     installs += est;
     if (k.target) {
       targets++;
-      targetInstalls += est;
-      targetBest += dailySearchInstalls(popularity, k.country, 1);
+      const demand = searchDemand(popularity, k.country);
+      targetDemand += demand;
+      if (position != null && position <= 10) targetTop10 += demand;
     }
   }
   return {
@@ -106,7 +140,7 @@ export function aggregateDay(keywords: readonly TrendKeyword[], index: number, d
     ...buckets,
     installs: round(installs, 2),
     targets,
-    reach: targetBest > 0 ? round((100 * targetInstalls) / targetBest, 1) : null,
+    reach: targetDemand > 0 ? round((100 * targetTop10) / targetDemand, 1) : null,
     avgPosition: ranked ? round(positionSum / ranked, 1) : null,
     top10Share: tracked ? round((buckets.top3 + buckets.top10) / tracked, 3) : null,
   };
@@ -115,10 +149,10 @@ export function aggregateDay(keywords: readonly TrendKeyword[], index: number, d
 function sameSetDelta(keywords: readonly TrendKeyword[], i: number) {
   let before = 0;
   let after = 0;
-  let targetBefore = 0;
-  let targetAfter = 0;
-  let bestBefore = 0;
-  let bestAfter = 0;
+  let demandBefore = 0;
+  let demandAfter = 0;
+  let top10Before = 0;
+  let top10After = 0;
   for (const k of keywords) {
     if (k.since == null || i < k.since) continue;
     const b = dailySearchInstalls(k.popularity[i], k.country, k.position[i]);
@@ -126,14 +160,16 @@ function sameSetDelta(keywords: readonly TrendKeyword[], i: number) {
     before += b;
     after += a;
     if (!k.target) continue;
-    targetBefore += b;
-    targetAfter += a;
-    bestBefore += dailySearchInstalls(k.popularity[i], k.country, 1);
-    bestAfter += dailySearchInstalls(k.popularity[i + 1], k.country, 1);
+    const db = searchDemand(k.popularity[i], k.country);
+    const da = searchDemand(k.popularity[i + 1], k.country);
+    demandBefore += db;
+    demandAfter += da;
+    if (k.position[i] != null && (k.position[i] as number) <= 10) top10Before += db;
+    if (k.position[i + 1] != null && (k.position[i + 1] as number) <= 10) top10After += da;
   }
   const share = (num: number, den: number) => (den > 0 ? (100 * num) / den : null);
-  const rb = share(targetBefore, bestBefore);
-  const ra = share(targetAfter, bestAfter);
+  const rb = share(top10Before, demandBefore);
+  const ra = share(top10After, demandAfter);
   return { installs: after - before, reach: rb == null || ra == null ? 0 : ra - rb };
 }
 

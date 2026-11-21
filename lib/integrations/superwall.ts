@@ -5,6 +5,7 @@ import { getSetting } from "@/lib/server/settings";
 import { logIntegrationEvent } from "./log";
 import { safeEqual } from "@/lib/server/crypto";
 import {
+  appIdFromProduct,
   appIdFromRef,
   candidateUser,
   isoFromMs,
@@ -203,6 +204,7 @@ export async function handleSuperwall(
   const appId =
     (await appIdFromRef(workspaceId, data.bundleId)) ??
     user.appId ??
+    (await appIdFromProduct(workspaceId, data.newProductId ?? data.productId)) ??
     (await soleOwnedAppId(workspaceId));
   const result = await saveRevenueEvent(workspaceId, {
     id: `sw_${data.id}`,

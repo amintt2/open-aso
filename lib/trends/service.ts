@@ -3,8 +3,8 @@ import { coverageIn, isCovered, storefrontListings } from "@/lib/keywords/covera
 import type { RelevanceCategory } from "@/lib/relevance/types";
 import { cached, wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
-import { aggregateDay, computeContributors, computeCountries, likeForLike, computeMovers, fillSeries, kpisOf, windowDates, type KeywordMeta, type SnapshotRow } from "./compute";
-import { EXCLUDED_CATEGORIES, type TrendDays, type TrendsResult } from "./types";
+import { aggregateDay, calibrationFactor, computeContributors, computeCountries, likeForLike, computeMovers, fillSeries, kpisOf, scaleInstalls, windowDates, type KeywordMeta, type SnapshotRow } from "./compute";
+import { EXCLUDED_CATEGORIES, type TrendCalibration, type TrendDays, type TrendsResult } from "./types";
 
 export type TrendsOptions = {
   country: string;
@@ -29,8 +29,27 @@ export async function getTrends(workspaceId: string, appId: number, options: Tre
   const country = options.country.toLowerCase();
   const ids = options.keywordIds?.length ? [...new Set(options.keywordIds)].sort((a, b) => a - b) : null;
   const includeAll = !!options.includeAll;
-  const key = wsKey(workspaceId, `trends:v2:${appId}:${country}:${options.days}:${includeAll ? 1 : 0}:${ids?.join(",") ?? ""}`);
-  return cached(key, TTL, () => loadTrends(workspaceId, app.id, app.trackId, { country, days: options.days, ids, includeAll }));
+  const key = wsKey(workspaceId, `trends:v3:${appId}:${country}:${options.days}:${includeAll ? 1 : 0}:${ids?.join(",") ?? ""}`);
+  return cached(key, TTL, async () => {
+    const raw = await loadTrends(workspaceId, app.id, app.trackId, { country, days: options.days, ids, includeAll });
+    const own = !ids && !includeAll && options.days >= 30;
+    const calibration = !app.isMine
+      ? null
+      : own
+        ? await appleCalibration(workspaceId, app.id, country, raw).catch(() => null)
+        : ((await getTrends(workspaceId, appId, { country, days: 30 }).catch(() => null))?.calibration ?? null);
+    const scaled = scaleInstalls(raw, calibration?.factor ?? 1);
+    return { ...scaled, kpis: { start: scaled.baselineIndex == null ? null : kpisOf(scaled.points[scaled.baselineIndex]), end: kpisOf(scaled.points[scaled.points.length - 1]) }, calibration };
+  });
+}
+
+async function appleCalibration(workspaceId: string, appId: number, country: string, raw: Omit<TrendsResult, "calibration">): Promise<TrendCalibration | null> {
+  const { getStoreAnalytics } = await import("@/lib/asc/analytics/service");
+  const apple = await getStoreAnalytics(workspaceId, appId, { days: 30, country, demo: "never" });
+  if (apple.status !== "ok" || apple.demo) return null;
+  const search = new Map(apple.sourceDaily.map((r) => [String(r.date), Number(r["search:firstDownloads"]) || 0]));
+  const model = raw.points.map((p) => (p.tracked ? (p.installsRaw ?? p.installs) : null));
+  return calibrationFactor(model, raw.points.map((p) => search.get(p.date) ?? null));
 }
 
 async function loadTrends(
@@ -38,7 +57,7 @@ async function loadTrends(
   appId: number,
   trackId: number,
   { country, days, ids, includeAll }: { country: string; days: TrendDays; ids: number[] | null; includeAll: boolean },
-): Promise<TrendsResult> {
+): Promise<Omit<TrendsResult, "calibration">> {
   const today = (await db.get<{ today: string }>("SELECT current_date AS today"))?.today ?? new Date().toISOString().slice(0, 10);
   const dates = windowDates(today, days);
   const from = dates[0];

@@ -33,8 +33,8 @@ export default function CountryBreakdown({ countries, onSelect }: { countries: T
                       {change > 0 ? "▲" : "▼"} {formatInstalls(Math.abs(change))}
                     </span>
                   )}
-                  <span className="caption-style text-subtle ml-auto" title="Search reach: share of the installs available on the keywords in your metadata">
-                    reach {formatReach(c.reach)}
+                  <span className="caption-style text-subtle ml-auto" title="Top-10 share: share of the searches on your metadata keywords where you rank in the top 10">
+                    top 10 {formatReach(c.reach)}
                   </span>
                 </span>
                 <span className="caption-style text-subtle flex min-w-0 items-center gap-1.5">

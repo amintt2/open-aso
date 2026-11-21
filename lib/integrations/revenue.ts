@@ -1,3 +1,4 @@
+import { cacheGet, cacheSet } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
 
 export type RevenueType =
@@ -68,6 +69,38 @@ export async function appIdFromRef(
   return row?.id ?? null;
 }
 
+export async function appIdFromProduct(workspaceId: string, productId: string | null | undefined) {
+  const product = productId?.trim();
+  if (!product) return null;
+  const prefixed = await db.get<{ id: number }>(
+    "SELECT id FROM apps WHERE workspace_id = ? AND is_mine AND bundle_id IS NOT NULL AND (? = bundle_id OR ? LIKE bundle_id || '.%') ORDER BY length(bundle_id) DESC, id ASC LIMIT 1",
+    [workspaceId, product, product],
+  );
+  if (prefixed) return prefixed.id;
+  const owned = await db.all<{ id: number }>("SELECT id FROM apps WHERE workspace_id = ? AND is_mine AND asc_app_id IS NOT NULL ORDER BY id ASC", [workspaceId]);
+  if (!owned.length) return null;
+  const { listProducts } = await import("@/lib/asc/pricing");
+  for (const app of owned) {
+    const products = await listProducts(workspaceId, app.id).catch(() => []);
+    if (products.some((p) => p.productId === product)) return app.id;
+  }
+  return null;
+}
+
+export async function attributeOrphanRevenue(workspaceId?: string) {
+  const rows = await db.all<{ workspace_id: string; product_id: string }>(
+    `SELECT DISTINCT workspace_id, product_id FROM revenue_events WHERE app_id IS NULL AND product_id IS NOT NULL${workspaceId ? " AND workspace_id = ?" : ""}`,
+    workspaceId ? [workspaceId] : [],
+  );
+  let updated = 0;
+  for (const row of rows) {
+    const appId = await appIdFromProduct(row.workspace_id, row.product_id).catch(() => null);
+    if (!appId) continue;
+    updated += await db.run("UPDATE revenue_events SET app_id = ? WHERE workspace_id = ? AND product_id = ? AND app_id IS NULL", [appId, row.workspace_id, row.product_id]);
+  }
+  return updated;
+}
+
 export async function soleOwnedAppId(workspaceId: string) {
   const rows = await db.all<{ id: number }>(
     "SELECT id FROM apps WHERE workspace_id = ? AND is_mine LIMIT 2",
@@ -118,4 +151,16 @@ export async function saveRevenueEvent(
     ],
   );
   return changes ? "inserted" : "duplicate";
+}
+
+const ORPHAN_KEY = "revenue:orphans:last-sync";
+const HOUR = 3600000;
+
+export async function runOrphanRevenueSync() {
+  const last = await cacheGet<string>(ORPHAN_KEY);
+  if (last && Date.now() - Date.parse(last) < HOUR) return null;
+  await cacheSet(ORPHAN_KEY, new Date().toISOString(), 2 * HOUR);
+  const updated = await attributeOrphanRevenue();
+  if (updated) console.info(`[open-aso] attributed ${updated} revenue events to their app`);
+  return updated;
 }

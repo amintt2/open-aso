@@ -1,5 +1,6 @@
 import { refreshKeywords } from "@/lib/aso/keywords";
 import { db, pool } from "@/lib/server/db";
+import { runOrphanRevenueSync } from "@/lib/integrations/revenue";
 import { runDailyArchiveSync } from "./prune";
 
 const INTERVAL_MS = 30 * 60 * 1000;
@@ -40,9 +41,10 @@ export async function runScheduledRefresh() {
   try {
     locked = (await client.query<{ ok: boolean }>("SELECT pg_try_advisory_lock($1) AS ok", [LOCK])).rows[0]?.ok ?? false;
     if (!locked) return null;
+    await runOrphanRevenueSync().catch((error) => console.error("[open-aso] revenue attribution failed", error));
+    await runDailyArchiveSync().catch((error) => console.error("[open-aso] archive sync failed", error));
     const ids = await staleKeywordBatch();
     if (!ids.length) {
-      await runDailyArchiveSync().catch((error) => console.error("[open-aso] archive sync failed", error));
       return { refreshed: 0, failed: 0 };
     }
     const results = await refreshKeywords(null, ids, CONCURRENCY);

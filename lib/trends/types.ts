@@ -94,6 +94,8 @@ export type TrendCountry = {
 
 export type TrendVersion = { version: string; date: string; releasedAt: string };
 
+export type TrendCalibration = { factor: number; model: number; apple: number; days: number };
+
 export type TrendsResult = {
   appId: number;
   country: string;
@@ -112,4 +114,5 @@ export type TrendsResult = {
   movers: TrendMovers;
   contributors: TrendContributor[];
   versions: TrendVersion[];
+  calibration: TrendCalibration | null;
 };

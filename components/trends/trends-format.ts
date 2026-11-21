@@ -7,7 +7,7 @@ export const LINE_COLORS = ["#3987e5", "#199e70", "#d95926", "#a66ee0", "#d6a21e
 export const SEARCH_COLOR = "#16c89e";
 
 export const REACH_HINT =
-  "Search reach: of the installs you would get by ranking #1 on every keyword that is in your title, subtitle or keyword field, the share your current ranks capture. 100% means #1 on all of them. Keywords not in your metadata, unrelated, brand and archived keywords are left out. Estimate.";
+  "Top-10 share: of the daily searches on the keywords in your title, subtitle or keyword field (weighted by Apple popularity), the share where your app shows in the top 10. 100% means top 10 on all of them. Unrelated, brand and archived keywords are left out. Measured ranks, estimated search volume.";
 
 export function formatReach(v: number | null | undefined) {
   if (v == null) return "—";

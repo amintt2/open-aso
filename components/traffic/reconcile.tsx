@@ -30,7 +30,7 @@ function Line({ item }: { item: TrafficReconcile }) {
         {span}: the rankings model estimated ~{formatCompact(Math.round(item.estimated))} search installs vs {formatCompact(item.apple)} first-time downloads Apple attributes to App Store search
         {ratio == null ? "" : ` (model = ${Math.round(ratio * 100)}% of Apple)`}.
       </span>{" "}
-      Apple&apos;s search source includes Apple Ads taps and searches on keywords you don&apos;t track; the model only knows your tracked keywords.
+      The model is scaled to match Apple&apos;s search downloads over the last 14 days, so the totals stay close by design; what it adds is the split by keyword, country and position. Older days can drift when your ranks change.
     </li>
   );
 }

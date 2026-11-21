@@ -9,7 +9,7 @@ export const trendsTools = [
     title: "Ranking trends",
     layer: "aso",
     description:
-      "Daily ranking trends for an app's tracked keywords over 7, 30, 90 or 365 days, from the daily keyword snapshots (gaps between snapshots are carried forward). Returns KPIs at the start and end of the window (estimated daily search installs; search reach % = estimated search installs on target keywords divided by what ranking #1 on each of them would bring, where target keywords are the tracked keywords found in the app's title, subtitle or keyword field; average position of ranked keywords; keywords in the top 10 and top 3), the daily series with rank distribution (top 3, 4–10, 11–50, 51–200, unranked), per-country search installs, reach, top-10 count and best keyword, whatMovedIt (the keywords whose estimated installs changed most over the window, with position before and after), biggest position gainers/losers and popularity/difficulty movers, and app version releases in the window. Keywords judged unrelated or brand are excluded unless includeUnrelated is true. Installs and search reach are modelled estimates.",
+      "Daily ranking trends for an app's tracked keywords over 7, 30, 90 or 365 days, from the daily keyword snapshots (gaps between snapshots are carried forward). Returns KPIs at the start and end of the window (estimated daily search installs, calibrated so the total matches Apple's App Store search first-time downloads over the last 14 days when App Store Connect is linked (see calibration); searchReach = top-10 share %: of the daily searches on target keywords (weighted by popularity), the share where the app ranks in the top 10, where target keywords are the tracked keywords found in the app's title, subtitle or keyword field; average position of ranked keywords; keywords in the top 10 and top 3), the daily series with rank distribution (top 3, 4–10, 11–50, 51–200, unranked), per-country search installs, reach, top-10 count and best keyword, whatMovedIt (the keywords whose estimated installs changed most over the window, with position before and after), biggest position gainers/losers and popularity/difficulty movers, and app version releases in the window. Keywords judged unrelated or brand are excluded unless includeUnrelated is true. Installs and search reach are modelled estimates.",
     input: {
       appId,
       country: country.optional().describe("Two-letter storefront code. Omit for all tracked countries."),
@@ -37,7 +37,8 @@ export const trendsTools = [
         tracked: k.tracked,
       });
       return {
-        note: "Search installs and search reach are modelled estimates, not Apple data. searchReach is a percentage computed only on target keywords (present in the app metadata). Unranked = not in the top 200 (counted as position 201 for changes).",
+        note: "Search installs are modelled estimates scaled by calibration.factor to match Apple search downloads (factor 1 = uncalibrated). searchReach is the top-10 share of search demand on target keywords (present in the app metadata). Unranked = not in the top 200 (counted as position 201 for changes).",
+        calibration: r.calibration,
         window: { from: r.from, to: r.to, days: r.days, country: r.country },
         keywords: r.keywords.length,
         excludedUnrelatedOrBrand: r.excluded,

@@ -88,11 +88,11 @@ export function getTopKeywords(
     key(workspaceId, appId, `keywords:${country}`),
     TTL,
     async () => {
-      const list = await listKeywords(
-        workspaceId,
-        appId,
-        country === "all" ? undefined : country,
-      );
+      const [list, trends] = await Promise.all([
+        listKeywords(workspaceId, appId, country === "all" ? undefined : country),
+        getTrends(workspaceId, appId, { country, days: 30 }).catch(() => null),
+      ]);
+      const factor = trends?.calibration?.factor ?? 1;
       return list
         .map((k) => ({
           id: k.id,
@@ -107,7 +107,7 @@ export function getTopKeywords(
           languageMatch: k.languageMatch,
           estInstalls:
             Math.round(
-              dailySearchInstalls(k.popularity, k.country, k.position) * 10,
+              dailySearchInstalls(k.popularity, k.country, k.position) * factor * 10,
             ) / 10,
         }))
         .sort(
