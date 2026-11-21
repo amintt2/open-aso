@@ -243,7 +243,7 @@ export async function adminWorkspaces() {
             (SELECT string_agg(u."email", ',' ORDER BY m."createdAt") FROM "member" m JOIN "user" u ON u."id" = m."userId" WHERE m."organizationId" = o."id" AND m."role" = 'owner') AS owners,
             (SELECT count(*) FROM "member" m WHERE m."organizationId" = o."id") AS members,
             (SELECT count(*) FROM apps a WHERE a.workspace_id = o."id") AS apps,
-            (SELECT count(*) FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = o."id") AS keywords,
+            (SELECT count(*) FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = o."id" AND k.archived_at IS NULL) AS keywords,
             (SELECT count(*) FROM competitors c JOIN apps a ON a.id = c.app_id WHERE a.workspace_id = o."id") AS competitors
        FROM "organization" o
        LEFT JOIN workspace_plans p ON p.workspace_id = o."id"

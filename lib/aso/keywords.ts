@@ -32,6 +32,8 @@ type KeywordRow = {
   relevance_category?: string | null;
   relevance_source?: string | null;
   relevance_at?: string | null;
+  archived_at?: string | null;
+  archive_reason?: string | null;
 };
 
 export type TrackedKeyword = {
@@ -61,6 +63,8 @@ export type TrackedKeyword = {
   relevanceAt: string | null;
   languageMatch: boolean;
   coverage?: KeywordCoverage;
+  archivedAt: string | null;
+  archiveReason: string | null;
 };
 
 function toKeyword(row: KeywordRow): TrackedKeyword {
@@ -95,17 +99,40 @@ function toKeyword(row: KeywordRow): TrackedKeyword {
     relevanceSource: (row.relevance_source as RelevanceSource | null) ?? null,
     relevanceAt: row.relevance_at ?? null,
     languageMatch: languageMatches(row.term, row.country),
+    archivedAt: row.archived_at ?? null,
+    archiveReason: row.archive_reason ?? null,
   };
 }
 
 const SELECT = `SELECT k.*, (SELECT s.position FROM keyword_snapshots s WHERE s.keyword_id = k.id AND s.date < current_date ORDER BY s.date DESC LIMIT 1) AS prev_position FROM keywords k JOIN apps a ON a.id = k.app_id`;
 
-export async function listKeywords(workspaceId: string, appId: number, country?: string): Promise<TrackedKeyword[]> {
+export type ArchivedFilter = "exclude" | "only" | "include";
+
+const ARCHIVED_SQL: Record<ArchivedFilter, string> = { exclude: " AND k.archived_at IS NULL", only: " AND k.archived_at IS NOT NULL", include: "" };
+
+export async function listKeywords(workspaceId: string, appId: number, country?: string, opts: { archived?: ArchivedFilter } = {}): Promise<TrackedKeyword[]> {
   await getApp(workspaceId, appId);
+  const archived = ARCHIVED_SQL[opts.archived ?? "exclude"];
   const rows = country
-    ? await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? AND k.country = ? ORDER BY k.created_at DESC`, [workspaceId, appId, country])
-    : await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? ORDER BY k.created_at DESC`, [workspaceId, appId]);
+    ? await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ? AND k.country = ?${archived} ORDER BY k.created_at DESC`, [workspaceId, appId, country])
+    : await db.all<KeywordRow>(`${SELECT} WHERE a.workspace_id = ? AND k.app_id = ?${archived} ORDER BY k.created_at DESC`, [workspaceId, appId]);
   return rows.map(toKeyword);
+}
+
+export async function archiveKeywords(workspaceId: string, ids: number[], reason: string) {
+  if (!ids.length) return 0;
+  return db.run(
+    "UPDATE keywords k SET archived_at = now(), archive_reason = ? FROM apps a WHERE a.id = k.app_id AND a.workspace_id = ? AND k.id = ANY(?::bigint[]) AND k.archived_at IS NULL",
+    [reason, workspaceId, ids],
+  );
+}
+
+export async function restoreKeywords(workspaceId: string, ids: number[]) {
+  if (!ids.length) return 0;
+  return db.run(
+    "UPDATE keywords k SET archived_at = NULL, archive_reason = NULL FROM apps a WHERE a.id = k.app_id AND a.workspace_id = ? AND k.id = ANY(?::bigint[]) AND k.archived_at IS NOT NULL",
+    [workspaceId, ids],
+  );
 }
 
 export async function getKeyword(workspaceId: string, id: number): Promise<TrackedKeyword> {
@@ -118,9 +145,14 @@ export async function addKeywords(workspaceId: string, appId: number, terms: str
   await getApp(workspaceId, appId);
   const clean = [...new Set(terms.map(normalizeTerm).filter(Boolean))];
   if (!clean.length) return [];
-  const existing = new Set(
-    (await db.all<{ term: string }>("SELECT term FROM keywords WHERE app_id = ? AND country = ? AND term = ANY(?::text[])", [appId, country, clean])).map((r) => r.term),
+  const known = await db.all<{ id: number; term: string; archived_at: string | null }>(
+    "SELECT id, term, archived_at FROM keywords WHERE app_id = ? AND country = ? AND term = ANY(?::text[])",
+    [appId, country, clean],
   );
+  const existing = new Set(known.map((r) => r.term));
+  const revived = known.filter((r) => r.archived_at).map((r) => r.id);
+  if (revived.length) await assertWithinLimit(workspaceId, "keywords", revived.length);
+  if (revived.length) await restoreKeywords(workspaceId, revived);
   const fresh = clean.filter((t) => !existing.has(t));
   if (fresh.length) await assertWithinLimit(workspaceId, "keywords", fresh.length);
   await db.tx(async (t) => {

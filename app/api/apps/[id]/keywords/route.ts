@@ -8,9 +8,11 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = route<Ctx>(async (req, { params }) => {
   const { workspaceId } = await requireWorkspace();
-  const country = new URL(req.url).searchParams.get("country") ?? undefined;
+  const url = new URL(req.url);
+  const country = url.searchParams.get("country") ?? undefined;
+  const archived = z.enum(["exclude", "only", "include"]).catch("exclude").parse(url.searchParams.get("archived") ?? "exclude");
   const appId = await idParam(params);
-  return json(await withCoverage(workspaceId, appId, await listKeywords(workspaceId, appId, country)));
+  return json(await withCoverage(workspaceId, appId, await listKeywords(workspaceId, appId, country, { archived })));
 });
 
 export const POST = route<Ctx>(async (req, { params }) => {

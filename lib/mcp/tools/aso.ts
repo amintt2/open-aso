@@ -9,7 +9,7 @@ import { exploreApp, exploreSearch } from "@/lib/explore/store";
 import { metadataInsights } from "@/lib/insights/metadata";
 import { scoreTrackedKeywords } from "@/lib/relevance/tracked";
 import { isCovered, withCoverage } from "@/lib/keywords/coverage";
-import { pruneReasons } from "@/lib/keywords/prune";
+import { archiveReasons } from "@/lib/keywords/prune";
 import { lastScan, startScan } from "@/lib/opportunities/scan";
 import { loadReviews } from "@/lib/reviews/reviews";
 import { reviewThemes } from "@/lib/reviews/themes";
@@ -93,32 +93,33 @@ export const asoTools = [
     title: "Get tracked keywords",
     layer: "aso",
     description:
-      "Tracked keywords for an app with popularity (0-100), difficulty (0-100), opportunity score, current rank (null = not in top 200), rank change, targeting label, estimated monthly downloads, relevance (0-100, core/related/unrelated/brand; languageMatch=false when the term's script doesn't fit the storefront) and metadata coverage: where the term sits in the app's own indexed metadata for that storefront (match exact/words/partial/none, strongest field title > subtitle > keywords > category, the locale, and a 0-100 indexing strength weighted title 1.0 / subtitle 0.7 / keyword field 0.45 / category 0.3, x0.8 for a secondary storefront locale). noise=true marks keywords that are not in the metadata, not ranked and off-topic (prune_keywords removes them). Use filters and fields to keep the answer small; a summary of counts is always returned.",
+      "Tracked keywords for an app with popularity (0-100), difficulty (0-100), opportunity score, current rank (null = not in top 200), rank change, targeting label, estimated monthly downloads, relevance (0-100, core/related/unrelated/brand; languageMatch=false when the term's script doesn't fit the storefront) and metadata coverage: where the term sits in the app's own indexed metadata for that storefront (match exact/words/partial/none, strongest field title > subtitle > keywords > category, the locale, and a 0-100 indexing strength weighted title 1.0 / subtitle 0.7 / keyword field 0.45 / category 0.3, x0.8 for a secondary storefront locale). archivable=true marks keywords that are neither in the metadata nor ranked (archive_keywords archives them; archived keywords keep their history and are hidden unless archived is set). Use filters and fields to keep the answer small; a summary of counts is always returned.",
     input: {
       appId,
       country: optionalCountry.describe("Storefront code to filter by. Omit for all countries."),
       sort: z.enum(KEYWORD_SORTS).default("opportunity").describe("Sort order (default opportunity, highest first)"),
       ranked: z.enum(["any", "ranked", "unranked"]).default("any").describe("Keep only ranked (top 200) or unranked keywords"),
       coverage: z.enum(["any", "in-metadata", "not-in-metadata"]).default("any").describe("in-metadata = every word of the term is in the storefront's indexed title/subtitle/keyword field"),
-      relevance: z.enum(["any", "relevant", "off-topic", "noise"]).default("any").describe("relevant = core/related in the right script; off-topic = unrelated/brand/wrong script; noise = off-topic, unranked and not in metadata"),
+      relevance: z.enum(["any", "relevant", "off-topic", "archivable"]).default("any").describe("relevant = core/related in the right script; off-topic = unrelated/brand/wrong script; archivable = not in metadata and unranked"),
+      archived: z.enum(["exclude", "only", "include"]).default("exclude").describe("Archived keywords are hidden by default"),
       minPopularity: z.number().int().min(0).max(100).optional(),
       fields: z.enum(["compact", "full"]).default("compact").describe("compact drops top apps, notes and timestamps"),
       limit: limit(100, 500),
     },
-    run: async ({ appId: id, country: c, sort, ranked, coverage, relevance, minPopularity, fields, limit: n }, { workspaceId }) => {
+    run: async ({ appId: id, country: c, sort, ranked, coverage, relevance, archived, minPopularity, fields, limit: n }, { workspaceId }) => {
       await getApp(workspaceId, id);
-      let all = await listKeywords(workspaceId, id, c);
-      if (all.some((k) => !k.relevanceAt)) {
+      let all = await listKeywords(workspaceId, id, c, { archived });
+      if (all.some((k) => !k.relevanceAt && !k.archivedAt)) {
         await scoreTrackedKeywords(workspaceId, id, c ?? "all").catch(() => undefined);
-        all = await listKeywords(workspaceId, id, c);
+        all = await listKeywords(workspaceId, id, c, { archived });
       }
-      const judged = (await withCoverage(workspaceId, id, all)).map((k) => ({ ...k, noise: pruneReasons(k) != null }));
+      const judged = (await withCoverage(workspaceId, id, all)).map((k) => ({ ...k, noise: !k.archivedAt && archiveReasons(k) != null }));
       const relevant = (k: (typeof judged)[number]) => k.languageMatch && (k.relevanceCategory === "core" || k.relevanceCategory === "related" || k.relevanceCategory == null);
       const kept = judged.filter(
         (k) =>
           (ranked === "any" || (ranked === "ranked") === (k.position != null)) &&
           (coverage === "any" || (coverage === "in-metadata") === isCovered(k.coverage)) &&
-          (relevance === "any" || (relevance === "noise" ? k.noise : (relevance === "relevant") === relevant(k))) &&
+          (relevance === "any" || (relevance === "archivable" ? k.noise : (relevance === "relevant") === relevant(k))) &&
           (minPopularity == null || (k.popularity ?? 0) >= minPopularity),
       );
       const summary = {
@@ -128,13 +129,14 @@ export const asoTools = [
         inMetadata: judged.filter((k) => isCovered(k.coverage)).length,
         inTitle: judged.filter((k) => isCovered(k.coverage) && k.coverage.field === "title").length,
         relevant: judged.filter(relevant).length,
-        noise: judged.filter((k) => k.noise).length,
+        archivable: judged.filter((k) => k.noise).length,
+        archived: judged.filter((k) => k.archivedAt).length,
         matching: kept.length,
       };
       const rows = (sortKeywords(kept, sort) as typeof kept).slice(0, n).map((k) => {
         const base = compactKeyword(k);
         const cov = { match: k.coverage.match, field: k.coverage.field, locale: k.coverage.locale, strength: k.coverage.score, ...(k.coverage.missing.length ? { missing: k.coverage.missing } : {}) };
-        if (fields === "full") return { ...base, coverage: cov, noise: k.noise };
+        if (fields === "full") return { ...base, coverage: cov, archivable: k.noise, archivedAt: k.archivedAt, archiveReason: k.archiveReason };
         return {
           id: k.id,
           term: k.term,
@@ -148,7 +150,8 @@ export const asoTools = [
           relevanceCategory: k.relevanceCategory,
           ...(k.languageMatch ? {} : { languageMatch: false }),
           coverage: cov,
-          ...(k.noise ? { noise: true } : {}),
+          ...(k.noise ? { archivable: true } : {}),
+          ...(k.archivedAt ? { archivedAt: k.archivedAt } : {}),
         };
       });
       return { appId: id, country: c ?? "all", summary, note: ESTIMATE_NOTE, keywords: rows };

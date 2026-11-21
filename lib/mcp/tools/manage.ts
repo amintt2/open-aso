@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { lookupApp } from "@/lib/appstore/itunes";
 import { findAppByTrackId, getApp } from "@/lib/aso/apps";
-import { addKeywords, deleteKeywords, getKeyword, listKeywords, refreshKeywords, updateKeyword } from "@/lib/aso/keywords";
+import { addKeywords, archiveKeywords, deleteKeywords, getKeyword, listKeywords, refreshKeywords, restoreKeywords, updateKeyword } from "@/lib/aso/keywords";
 import { normalizeTerm } from "@/lib/aso/scoring";
 import { sameLocale } from "@/lib/asc/locales";
 import { getAppMetadata, getMetadata, updateMetadata } from "@/lib/asc/metadata";
@@ -9,7 +9,7 @@ import { getProductPrices, listProducts } from "@/lib/asc/pricing";
 import { ALPHA3 } from "@/lib/asc/territories";
 import { METADATA_LIMITS, type LocaleMetadata, type MetadataPatch, type TerritoryPrice } from "@/lib/asc/types";
 import { HttpError } from "@/lib/server/http";
-import { pruneKeywords } from "@/lib/keywords/prune";
+import { archiveNoise } from "@/lib/keywords/prune";
 import { isStopword, tokenize } from "@/lib/suggestions/text";
 import { defineTool } from "../define";
 import { appId, compactKeyword, confirm, countryFor, dryRun, ESTIMATE_NOTE, optionalCountry, requireWrites, shouldApply, trackId, truncate } from "./shared";
@@ -85,7 +85,7 @@ export const manageTools = [
     title: "Stop tracking keywords",
     layer: "manage",
     write: true,
-    description: "Stop tracking keywords (deletes them and their history). All ids must belong to the given app. Requires write tools to be enabled.",
+    description: "Permanently stop tracking keywords (deletes them and their history; prefer archive_keywords, which keeps the history). All ids must belong to the given app. Requires write tools to be enabled.",
     input: { appId, keywordIds: z.array(z.number().int().positive()).min(1).max(200).describe("Keyword ids from get_app_keywords") },
     run: async ({ appId: id, keywordIds }, { workspaceId }) => {
       await requireWrites(workspaceId);
@@ -99,24 +99,44 @@ export const manageTools = [
     },
   }),
   defineTool({
-    name: "prune_keywords",
-    title: "Clean up noise keywords",
+    name: "archive_keywords",
+    title: "Archive stale keywords",
     layer: "manage",
     write: true,
     description:
-      "Find tracked keywords that are noise: not in the app's indexed metadata for that storefront (title, subtitle, keyword field of every locale the storefront indexes), not ranked in the top 200, and judged unrelated, a competitor brand or in the wrong script. Liked keywords and keywords with notes are never touched. dryRun (default) lists them with reasons and per-country counts; dryRun: false + confirm: true deletes them (optionally only the ids you pass).",
+      "Archive tracked keywords instead of deleting them: they disappear from lists, trends and plan limits but keep their rank history, and come back with it when re-added, detected again or put back in the metadata. Without keywordIds it targets candidates: not in the app's indexed metadata for that storefront and not ranked in the top 200 for 14+ days (liked or noted keywords are never touched). With keywordIds it archives exactly those. dryRun (default) previews; dryRun: false + confirm: true applies. A daily job also archives candidates and restores archived keywords that are back in the metadata.",
     input: {
       appId,
       country: optionalCountry.describe("Storefront code. Omit for every country."),
-      keywordIds: z.array(z.number().int().positive()).max(2000).optional().describe("Only delete these candidate ids"),
-      limit: z.number().int().min(1).max(500).default(100).describe("Candidates to list in the answer (default 100)"),
+      keywordIds: z.array(z.number().int().positive()).max(5000).optional().describe("Archive exactly these ids (any keyword of this app), instead of the candidates"),
+      limit: z.number().int().min(1).max(500).default(100).describe("Rows to list in the answer (default 100)"),
       dryRun,
       confirm,
     },
     run: async ({ appId: id, country: c, keywordIds, limit: n, dryRun: dry, confirm: ok }, { workspaceId }) => {
       const apply = await shouldApply(workspaceId, { dryRun: dry, confirm: ok });
-      const result = await pruneKeywords(workspaceId, id, { country: c, apply, ids: keywordIds });
+      if (keywordIds?.length) {
+        const owned = new Map((await listKeywords(workspaceId, id)).map((k) => [k.id, k]));
+        const targets = keywordIds.filter((k) => owned.has(k));
+        const archived = apply ? await archiveKeywords(workspaceId, targets, "manual") : 0;
+        return { appId: id, applied: apply, archived, ignored: keywordIds.length - targets.length, keywords: targets.slice(0, n).map((k) => ({ id: k, term: owned.get(k)?.term, country: owned.get(k)?.country })) };
+      }
+      const result = await archiveNoise(workspaceId, id, { country: c, apply });
       return { ...result, applied: apply, candidateCount: result.candidates.length, candidates: result.candidates.slice(0, n) };
+    },
+  }),
+  defineTool({
+    name: "restore_keywords",
+    title: "Restore archived keywords",
+    layer: "manage",
+    write: true,
+    description: "Bring archived keywords back into tracking with their history. Ids come from get_app_keywords with archived: \"only\". Requires write tools to be enabled.",
+    input: { appId, keywordIds: z.array(z.number().int().positive()).min(1).max(5000) },
+    run: async ({ appId: id, keywordIds }, { workspaceId }) => {
+      await requireWrites(workspaceId);
+      const archived = new Set((await listKeywords(workspaceId, id, undefined, { archived: "only" })).map((k) => k.id));
+      const ids = keywordIds.filter((k) => archived.has(k));
+      return { appId: id, restored: await restoreKeywords(workspaceId, ids), ignored: keywordIds.length - ids.length };
     },
   }),
   defineTool({
