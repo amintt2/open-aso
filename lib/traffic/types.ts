@@ -28,6 +28,7 @@ export type TrafficPoint = {
   impressions: number | null;
   firstOpens: number | null;
   estSearch: number | null;
+  revenue: number | null;
 };
 
 export type TrafficReconcile =

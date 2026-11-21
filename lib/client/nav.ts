@@ -61,7 +61,7 @@ export const APP_NAV_GROUPS: NavGroup[] = [
 export const APP_NAV: NavItem[] = APP_NAV_GROUPS.flatMap((g) => g.items);
 
 export const GLOBAL_NAV: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "All apps", icon: LayoutDashboard },
   { href: "/explore", label: "Explore", icon: Compass },
   { href: "/apple-ads", label: "Apple Ads", icon: Megaphone },
   { href: "/integrations", label: "Integrations", icon: PlugZap },

@@ -94,6 +94,7 @@ type RevenueData = {
   revenue: number;
   previous: { trials: number; purchases: number; revenue: number } | null;
   countries: Map<string, number>;
+  series: Map<string, number> | null;
   payersOnly: boolean;
 };
 
@@ -120,14 +121,14 @@ async function loadRevenue(workspaceId: string, appId: number, days: TrafficDays
     const source: TrafficSource = { state: "ok", demo: overview.demo, message: null, through: overview.to };
     if (country !== "all") {
       const row = geo.countries.find((c) => c.country.toLowerCase() === country);
-      return { source, providers, data: { trials: row?.trials ?? 0, purchases: row?.payers ?? 0, revenue: row?.revenue ?? 0, previous: null, countries, payersOnly: true } };
+      return { source, providers, data: { trials: row?.trials ?? 0, purchases: row?.payers ?? 0, revenue: row?.revenue ?? 0, previous: null, countries, series: null, payersOnly: true } };
     }
     const t = overview.totals;
     const p = overview.previous;
     return {
       source,
       providers,
-      data: { trials: t.trials, purchases: t.purchases, revenue: t.netRevenue, previous: { trials: p.trials, purchases: p.purchases, revenue: p.netRevenue }, countries, payersOnly: false },
+      data: { trials: t.trials, purchases: t.purchases, revenue: t.netRevenue, previous: { trials: p.trials, purchases: p.purchases, revenue: p.netRevenue }, countries, series: new Map(overview.series.map((pt) => [pt.date, Math.round(pt.netRevenue * 100) / 100])), payersOnly: false },
     };
   } catch (error) {
     return { source: off("error", message(error)), data: null, providers: [] };
@@ -199,6 +200,7 @@ export async function getTraffic(workspaceId: string, appId: number, q: TrafficQ
         impressions: a ? a.impressions : null,
         firstOpens: posthog.data && date >= calendarFrom ? (posthog.data.series.get(date) ?? 0) : null,
         estSearch: estByDate.get(date) ?? null,
+        revenue: revenue.data?.series && date >= calendarFrom ? (revenue.data.series.get(date) ?? 0) : null,
       };
     });
 

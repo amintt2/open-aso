@@ -5,6 +5,8 @@ type UiState = {
   sidebarOpen: boolean;
   addAppOpen: boolean;
   countryByApp: Record<number, string>;
+  lastAppId: number | null;
+  setLastApp: (appId: number) => void;
   setSidebarOpen: (open: boolean) => void;
   setAddAppOpen: (open: boolean) => void;
   setCountry: (appId: number, country: string) => void;
@@ -16,10 +18,12 @@ export const useUiStore = create<UiState>()(
       sidebarOpen: false,
       addAppOpen: false,
       countryByApp: {},
+      lastAppId: null,
+      setLastApp: (lastAppId) => set({ lastAppId }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
       setAddAppOpen: (addAppOpen) => set({ addAppOpen }),
       setCountry: (appId, country) => set((s) => ({ countryByApp: { ...s.countryByApp, [appId]: country } })),
     }),
-    { name: "open-aso-ui", partialize: (s) => ({ countryByApp: s.countryByApp }) },
+    { name: "open-aso-ui", partialize: (s) => ({ countryByApp: s.countryByApp, lastAppId: s.lastAppId }) },
   ),
 );

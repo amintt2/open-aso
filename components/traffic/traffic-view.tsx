@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChartColumnIncreasing, FlaskConical, Loader2, RefreshCw } from "lucide-react";
 import Button from "@/components/_ui/button";
@@ -16,6 +16,7 @@ import { useStoreSync } from "@/components/store-analytics/use-sync";
 import { ALL_COUNTRIES, useAppCountry, useCurrentApp } from "@/hooks/use-app";
 import { useApi } from "@/lib/client/api";
 import { TRAFFIC_DAYS, type TrafficDays, type TrafficResult } from "@/lib/traffic/types";
+import { useUiStore } from "@/stores/ui-store";
 import FunnelStrip from "./funnel-strip";
 import OverlayChart from "./overlay-chart";
 import TrafficSection, { SECTIONS, type SectionKey } from "./traffic-sections";
@@ -69,6 +70,13 @@ export default function TrafficView() {
     },
     [params, pathname, router],
   );
+
+  const linked = params.get("country");
+  useEffect(() => {
+    if (!app || !linked) return;
+    if (/^[a-z]{2}$/.test(linked)) useUiStore.getState().setCountry(app.id, linked);
+    update({ country: null });
+  }, [app, linked, update]);
 
   const { data: latest } = useApi<TrafficResult>(app ? `/api/apps/${appId}/traffic?days=${days}&country=all&demo=${demo ? 1 : 0}` : null, { keepPreviousData: true });
   const countries = useMemo(() => [...new Set([...(app?.countries ?? []), ...(latest?.territories ?? []), ...(latest?.countries.map((c) => c.country) ?? [])])], [app, latest]);
