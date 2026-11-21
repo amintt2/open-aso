@@ -48,7 +48,7 @@ async function appleCalibration(workspaceId: string, appId: number, country: str
   const apple = await getStoreAnalytics(workspaceId, appId, { days: 30, country, demo: "never" });
   if (apple.status !== "ok" || apple.demo) return null;
   const search = new Map(apple.sourceDaily.map((r) => [String(r.date), Number(r["search:firstDownloads"]) || 0]));
-  const model = raw.points.map((p) => (p.tracked ? (p.installsRaw ?? p.installs) : null));
+  const model = raw.points.map((p) => (p.tracked ? p.installs : null));
   return calibrationFactor(model, raw.points.map((p) => search.get(p.date) ?? null));
 }
 
