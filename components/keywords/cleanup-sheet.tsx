@@ -11,7 +11,7 @@ import EmptyState from "@/components/shell/empty-state";
 import { COUNTRY_BY_CODE } from "@/lib/appstore/countries";
 import { api, useApi } from "@/lib/client/api";
 import { cn } from "@/lib/utils";
-import { reasonLabel, type ArchiveCandidate, type ArchivePreview } from "./archive-types";
+import { archiveIds, reasonLabel, type ArchiveCandidate, type ArchivePreview } from "./archive-types";
 
 const SHARED_REASONS = new Set(["not-in-metadata", "unranked"]);
 
@@ -81,8 +81,11 @@ function CleanupBody({ appId, country, onClose, onArchived }: Omit<Props, "open"
     setRemoving(true);
     try {
       const ids = chosen.map((c) => c.id);
-      const res = await api<{ archived: number }>(`/api/apps/${appId}/keywords/archive`, { method: "POST", body: { ...(country ? { country } : {}), ids } });
-      toast.success(`${res.archived} keyword${res.archived === 1 ? "" : "s"} archived. Restore them any time from Archived.`);
+      const archived =
+        ids.length === total
+          ? (await api<{ archived: number }>(`/api/apps/${appId}/keywords/archive`, { method: "POST", body: country ? { country } : { all: true } })).archived
+          : await archiveIds(appId, ids, "candidates");
+      toast.success(`${archived} keyword${archived === 1 ? "" : "s"} archived. Restore them any time from Archived.`);
       onArchived(ids);
       onClose();
     } catch (e) {
@@ -164,7 +167,13 @@ function CleanupBody({ appId, country, onClose, onArchived }: Omit<Props, "open"
                                   {reasonLabel(r)}
                                 </Tag>
                               ))}
-                            <span className="caption-style text-subtle w-12 text-right tabular-nums" title="Search popularity, 5 to 100">
+                            <span
+                              className="caption-style text-subtle shrink-0 text-right tabular-nums"
+                              title={c.lastRankedAt ? `Last seen in the top 200 on ${c.lastRankedAt}, best position #${c.bestPosition}` : "Never seen in the top 200 since you started tracking it"}
+                            >
+                              {c.bestPosition == null ? "never ranked" : `best #${c.bestPosition}`}
+                            </span>
+                            <span className="caption-style text-subtle w-12 shrink-0 text-right tabular-nums" title="Search popularity, 5 to 100">
                               {c.popularity == null ? "—" : `pop ${Math.round(c.popularity)}`}
                             </span>
                           </label>

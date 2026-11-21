@@ -7,6 +7,7 @@ import { api, revalidate } from "@/lib/client/api";
 import type { TrackedKeyword } from "@/lib/client/types";
 import { downloadCsv } from "@/lib/csv";
 import { csvRows } from "@/lib/keywords/table";
+import { archiveIds, restoreIds } from "./archive-types";
 
 export function useKeywordActions(
   appId: number,
@@ -50,10 +51,7 @@ export function useKeywordActions(
       try {
         await mutate(
           async (current) => {
-            await api(`/api/apps/${appId}/keywords/archive`, {
-              method: "POST",
-              body: { ids },
-            });
+            await archiveIds(appId, ids, "exact");
             return current?.filter((k) => !set.has(k.id));
           },
           {
@@ -72,10 +70,7 @@ export function useKeywordActions(
             action: {
               label: "Undo",
               onClick: () =>
-                void api(`/api/apps/${appId}/keywords/restore`, {
-                  method: "POST",
-                  body: { ids },
-                })
+                void restoreIds(appId, ids)
                   .then(() => revalidate("/api/apps"))
                   .catch(() => toast.error("Could not restore keywords")),
             },

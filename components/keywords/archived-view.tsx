@@ -15,7 +15,7 @@ import { normalizeTerm } from "@/lib/aso/scoring";
 import { api } from "@/lib/client/api";
 import { timeAgo } from "@/lib/client/format";
 import { cn } from "@/lib/utils";
-import { reasonList, type ArchivableKeyword } from "./archive-types";
+import { reasonLabel, restoreIds, type ArchivableKeyword } from "./archive-types";
 import WhereCell from "./where-cell";
 
 const HEAD = "sticky top-0 z-20 bg-background shadow-[inset_0_-1px_0_var(--border)]";
@@ -53,8 +53,8 @@ export default function ArchivedView({ appId, rows, showCountry, onChanged, onBa
     if (!ids.length || working) return;
     setWorking(true);
     try {
-      const res = await api<{ restored: number }>(`/api/apps/${appId}/keywords/restore`, { method: "POST", body: { ids } });
-      toast.success(`${res.restored} keyword${res.restored === 1 ? "" : "s"} restored with ${res.restored === 1 ? "its" : "their"} history`);
+      const restored = await restoreIds(appId, ids);
+      toast.success(`${restored} keyword${restored === 1 ? "" : "s"} restored with ${restored === 1 ? "its" : "their"} history`);
       setSelected(NONE);
       onChanged();
     } catch (e) {
@@ -166,7 +166,6 @@ export default function ArchivedView({ appId, rows, showCountry, onChanged, onBa
             <TableBody>
               {visible.map((k) => {
                 const meta = COUNTRY_BY_CODE.get(k.country);
-                const reasons = reasonList(k.archiveReason);
                 return (
                   <TableRow key={k.id} data-selected={selected.has(k.id)} className="bg-background hover:bg-[#1b1b1b] data-[selected=true]:bg-[#1c1a29]">
                     <TableCell className="w-10 pr-0 pl-4">
@@ -181,7 +180,7 @@ export default function ArchivedView({ appId, rows, showCountry, onChanged, onBa
                         {meta?.name ?? k.country.toUpperCase()}
                       </TableCell>
                     )}
-                    <TableCell className="caption-style text-soft">{reasons.length ? reasons.join(" · ") : "—"}</TableCell>
+                    <TableCell className="caption-style text-soft">{k.archiveReason ? reasonLabel(k.archiveReason) : "—"}</TableCell>
                     <TableCell>
                       <PositionBadge position={k.position} />
                     </TableCell>
