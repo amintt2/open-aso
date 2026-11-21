@@ -174,6 +174,7 @@ function KeywordRow({
             category={k.relevanceCategory}
             source={k.relevanceSource}
             languageMatch={k.languageMatch}
+            coverage={k.coverage}
           />
         </TableCell>
         <TableCell>

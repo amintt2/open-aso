@@ -6,6 +6,7 @@ import { getApp } from "./apps";
 import { normalizeTerm, opportunityScore, type TargetingLabel } from "./scoring";
 import { languageMatches } from "@/lib/relevance/language";
 import type { RelevanceCategory, RelevanceSource } from "@/lib/relevance/types";
+import type { KeywordCoverage } from "@/lib/keywords/coverage";
 
 type KeywordRow = {
   id: number;
@@ -59,6 +60,7 @@ export type TrackedKeyword = {
   relevanceSource: RelevanceSource | null;
   relevanceAt: string | null;
   languageMatch: boolean;
+  coverage?: KeywordCoverage;
 };
 
 function toKeyword(row: KeywordRow): TrackedKeyword {

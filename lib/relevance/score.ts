@@ -8,6 +8,7 @@ import { cacheGetMany, cacheSetMany, DAY, wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
 import { mapLimit } from "@/lib/suggestions/jobs";
 import { segments } from "@/lib/suggestions/text";
+import { coverageIn, isCovered, storefrontListing, type StorefrontListing } from "@/lib/keywords/coverage";
 import { buildVocabulary, heuristicScore, type Vocabulary } from "./heuristic";
 import { languageMatches, searchLanguages } from "./language";
 import type { Relevance, RelevanceCategory, RelevanceStatus } from "./types";
@@ -19,7 +20,11 @@ const DESCRIPTION_CHARS = 1500;
 const TRACKED_IN_STATE = 30;
 const RELATED_WEIGHT = 0.55;
 const MIN_RELATED = 50;
-const KEY_VERSION = "v2";
+const KEY_VERSION = "v3";
+const DECLARED_FLOOR = 40;
+const DECLARED_SCALE = 0.4;
+const RANKED_FLOOR = 55;
+const RANKED_TOP = 30;
 
 const CRITERIA: Record<RelevanceCategory, string> = {
   core: "describes the app's main purpose or a core feature; a searcher would likely install this app",
@@ -28,7 +33,7 @@ const CRITERIA: Record<RelevanceCategory, string> = {
   brand: "the name of a specific other app, company or product",
 };
 
-export type RelevanceContext = { app: TrackedApp; tracked: TrackedKeyword[]; competitors: string[]; country: string };
+export type RelevanceContext = { app: TrackedApp; tracked: TrackedKeyword[]; competitors: string[]; country: string; listing: StorefrontListing | null };
 
 export type RelevanceRun = { scores: Map<string, Relevance>; judged: number; cached: number; jevError?: string };
 
@@ -41,12 +46,13 @@ export function relevanceStatus(): RelevanceStatus {
 }
 
 export async function relevanceContext(workspaceId: string, appId: number, country: string): Promise<RelevanceContext> {
-  const [app, tracked, competitors] = await Promise.all([
+  const [app, tracked, competitors, listing] = await Promise.all([
     getApp(workspaceId, appId),
     listKeywords(workspaceId, appId, country),
     db.all<{ name: string }>("SELECT c.name FROM competitors c JOIN apps a ON a.id = c.app_id WHERE a.workspace_id = ? AND c.app_id = ?", [workspaceId, appId]),
+    storefrontListing(workspaceId, appId, country).catch(() => null),
   ]);
-  return { app, tracked, competitors: competitors.map((c) => c.name), country };
+  return { app, tracked, competitors: competitors.map((c) => c.name), country, listing };
 }
 
 function appText(app: TrackedApp) {
@@ -71,9 +77,27 @@ function withOwnBrand(scores: Map<string, Relevance>, app: TrackedApp) {
   return scores;
 }
 
-function profileHash(app: TrackedApp) {
+export function declaredFloor(r: Relevance, coverageScore: number | null, position: number | null): Relevance {
+  let floor = 0;
+  if (coverageScore != null) floor = Math.round(DECLARED_FLOOR + DECLARED_SCALE * coverageScore);
+  if (position != null && position <= RANKED_TOP) floor = Math.max(floor, RANKED_FLOOR);
+  if (!floor || r.category === "brand" || r.relevance >= floor) return r;
+  return { ...r, relevance: floor, category: r.category === "unrelated" ? "related" : r.category };
+}
+
+function withDeclared(scores: Map<string, Relevance>, ctx: RelevanceContext) {
+  const rank = new Map(ctx.tracked.map((k) => [normalizeTerm(k.term), k.position]));
+  for (const [term, r] of scores) {
+    const coverage = coverageIn(ctx.listing, term);
+    scores.set(term, declaredFloor(r, isCovered(coverage) ? coverage.score : null, rank.get(term) ?? null));
+  }
+  return withOwnBrand(scores, ctx.app);
+}
+
+function profileHash(app: TrackedApp, listing: StorefrontListing | null) {
   const t = appText(app);
-  return createHash("sha1").update([t.name, t.subtitle ?? "", t.genre ?? "", t.description].join("\u0000")).digest("hex").slice(0, 12);
+  const meta = (listing?.locales ?? []).map((l) => [l.locale, l.title, l.subtitle ?? "", l.keywords ?? ""].join("|"));
+  return createHash("sha1").update([t.name, t.subtitle ?? "", t.genre ?? "", t.description, ...meta].join("\u0000")).digest("hex").slice(0, 12);
 }
 
 function topTracked(tracked: TrackedKeyword[]) {
@@ -95,6 +119,10 @@ function stateFor(ctx: RelevanceContext) {
     },
     competitors: ctx.competitors.slice(0, 20),
     storefront: { country: country?.name ?? ctx.country.toUpperCase(), code: ctx.country.toUpperCase(), searchLanguages: searchLanguages(ctx.country) },
+    indexedMetadata: {
+      note: "The developer's own title, subtitle and keyword field for the languages this storefront indexes. Words placed here are deliberate targets: a search matching them is what the developer built the listing for, so judge it as at least related unless it plainly means a different need. Treat foreign-language entries by their meaning.",
+      locales: (ctx.listing?.locales ?? []).slice(0, 10).map((l) => ({ locale: l.locale, title: l.title, subtitle: l.subtitle, keywords: l.keywords })),
+    },
   };
 }
 
@@ -107,6 +135,7 @@ function vocabularyFor(ctx: RelevanceContext): Vocabulary {
     genre: t.genre,
     tracked: ctx.tracked.map((k) => ({ term: k.term, position: k.position })),
     competitors: ctx.competitors,
+    listings: ctx.listing?.locales ?? [],
   });
 }
 
@@ -129,10 +158,10 @@ export async function scoreRelevance(workspaceId: string, appId: number, terms: 
   const scores = heuristicRelevance(ctx, unique);
   if (!unique.length || !isTypesafeConfigured()) {
     opts.onProgress?.(unique.length, unique.length);
-    return { scores: withOwnBrand(scores, ctx.app), judged: 0, cached: 0 };
+    return { scores: withDeclared(scores, ctx), judged: 0, cached: 0 };
   }
 
-  const hash = profileHash(ctx.app);
+  const hash = profileHash(ctx.app, ctx.listing);
   const keyOf = (term: string) => wsKey(workspaceId, `relevance:${KEY_VERSION}:${appId}:${hash}:${country}:${term}`);
   const hits = await cacheGetMany<Cached>(unique.map(keyOf));
   let cached = 0;
@@ -184,5 +213,5 @@ export async function scoreRelevance(workspaceId: string, appId: number, terms: 
     opts.onProgress?.(done, total);
   });
 
-  return { scores: withOwnBrand(scores, ctx.app), judged, cached, jevError };
+  return { scores: withDeclared(scores, ctx), judged, cached, jevError };
 }

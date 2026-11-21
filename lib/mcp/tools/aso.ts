@@ -8,6 +8,8 @@ import { discoverRankingKeywords } from "@/lib/explore/ranking-keywords";
 import { exploreApp, exploreSearch } from "@/lib/explore/store";
 import { metadataInsights } from "@/lib/insights/metadata";
 import { scoreTrackedKeywords } from "@/lib/relevance/tracked";
+import { isCovered, withCoverage } from "@/lib/keywords/coverage";
+import { pruneReasons } from "@/lib/keywords/prune";
 import { lastScan, startScan } from "@/lib/opportunities/scan";
 import { loadReviews } from "@/lib/reviews/reviews";
 import { reviewThemes } from "@/lib/reviews/themes";
@@ -91,37 +93,86 @@ export const asoTools = [
     title: "Get tracked keywords",
     layer: "aso",
     description:
-      "Tracked keywords for an app with popularity (0-100), difficulty (0-100), opportunity score, current rank (null = not in top 200), rank change since the previous snapshot, targeting label, estimated monthly downloads and relevance to the app (0-100, category core/related/unrelated/brand, null until scored; languageMatch=false when the term's script doesn't fit the storefront).",
+      "Tracked keywords for an app with popularity (0-100), difficulty (0-100), opportunity score, current rank (null = not in top 200), rank change, targeting label, estimated monthly downloads, relevance (0-100, core/related/unrelated/brand; languageMatch=false when the term's script doesn't fit the storefront) and metadata coverage: where the term sits in the app's own indexed metadata for that storefront (match exact/words/partial/none, strongest field title > subtitle > keywords > category, the locale, and a 0-100 indexing strength weighted title 1.0 / subtitle 0.7 / keyword field 0.45 / category 0.3, x0.8 for a secondary storefront locale). noise=true marks keywords that are not in the metadata, not ranked and off-topic (prune_keywords removes them). Use filters and fields to keep the answer small; a summary of counts is always returned.",
     input: {
       appId,
       country: optionalCountry.describe("Storefront code to filter by. Omit for all countries."),
       sort: z.enum(KEYWORD_SORTS).default("opportunity").describe("Sort order (default opportunity, highest first)"),
+      ranked: z.enum(["any", "ranked", "unranked"]).default("any").describe("Keep only ranked (top 200) or unranked keywords"),
+      coverage: z.enum(["any", "in-metadata", "not-in-metadata"]).default("any").describe("in-metadata = every word of the term is in the storefront's indexed title/subtitle/keyword field"),
+      relevance: z.enum(["any", "relevant", "off-topic", "noise"]).default("any").describe("relevant = core/related in the right script; off-topic = unrelated/brand/wrong script; noise = off-topic, unranked and not in metadata"),
+      minPopularity: z.number().int().min(0).max(100).optional(),
+      fields: z.enum(["compact", "full"]).default("compact").describe("compact drops top apps, notes and timestamps"),
       limit: limit(100, 500),
     },
-    run: async ({ appId: id, country: c, sort, limit: n }, { workspaceId }) => {
+    run: async ({ appId: id, country: c, sort, ranked, coverage, relevance, minPopularity, fields, limit: n }, { workspaceId }) => {
       await getApp(workspaceId, id);
       let all = await listKeywords(workspaceId, id, c);
       if (all.some((k) => !k.relevanceAt)) {
         await scoreTrackedKeywords(workspaceId, id, c ?? "all").catch(() => undefined);
         all = await listKeywords(workspaceId, id, c);
       }
-      return { appId: id, country: c ?? "all", total: all.length, note: ESTIMATE_NOTE, keywords: sortKeywords(all, sort).slice(0, n).map(compactKeyword) };
+      const judged = (await withCoverage(workspaceId, id, all)).map((k) => ({ ...k, noise: pruneReasons(k) != null }));
+      const relevant = (k: (typeof judged)[number]) => k.languageMatch && (k.relevanceCategory === "core" || k.relevanceCategory === "related" || k.relevanceCategory == null);
+      const kept = judged.filter(
+        (k) =>
+          (ranked === "any" || (ranked === "ranked") === (k.position != null)) &&
+          (coverage === "any" || (coverage === "in-metadata") === isCovered(k.coverage)) &&
+          (relevance === "any" || (relevance === "noise" ? k.noise : (relevance === "relevant") === relevant(k))) &&
+          (minPopularity == null || (k.popularity ?? 0) >= minPopularity),
+      );
+      const summary = {
+        total: judged.length,
+        ranked: judged.filter((k) => k.position != null).length,
+        top10: judged.filter((k) => k.position != null && k.position <= 10).length,
+        inMetadata: judged.filter((k) => isCovered(k.coverage)).length,
+        inTitle: judged.filter((k) => isCovered(k.coverage) && k.coverage.field === "title").length,
+        relevant: judged.filter(relevant).length,
+        noise: judged.filter((k) => k.noise).length,
+        matching: kept.length,
+      };
+      const rows = (sortKeywords(kept, sort) as typeof kept).slice(0, n).map((k) => {
+        const base = compactKeyword(k);
+        const cov = { match: k.coverage.match, field: k.coverage.field, locale: k.coverage.locale, strength: k.coverage.score, ...(k.coverage.missing.length ? { missing: k.coverage.missing } : {}) };
+        if (fields === "full") return { ...base, coverage: cov, noise: k.noise };
+        return {
+          id: k.id,
+          term: k.term,
+          country: k.country,
+          popularity: k.popularity,
+          difficulty: k.difficulty,
+          opportunity: k.opportunity,
+          position: k.position,
+          positionChange: k.positionChange,
+          relevance: k.relevance,
+          relevanceCategory: k.relevanceCategory,
+          ...(k.languageMatch ? {} : { languageMatch: false }),
+          coverage: cov,
+          ...(k.noise ? { noise: true } : {}),
+        };
+      });
+      return { appId: id, country: c ?? "all", summary, note: ESTIMATE_NOTE, keywords: rows };
     },
   }),
   defineTool({
     name: "search_rankings",
     title: "Check rankings for terms",
     layer: "aso",
-    description: "Check where an app currently ranks (top 200) in App Store search for up to 20 terms in one storefront. Live lookup; does not save anything.",
+    description:
+      "Check where an app currently ranks (top 200) in App Store search for up to 20 terms in one or several storefronts (up to 10 countries in one call). Live lookup; does not save anything.",
     input: {
       appId: appId.optional(),
       trackId: trackId.optional(),
       terms: z.array(z.string().trim().min(1).max(100)).min(1).max(20).describe("Search terms to check"),
-      country,
+      country: country.optional().describe("One storefront code"),
+      countries: z.array(country).min(1).max(10).optional().describe("Several storefront codes; use instead of country"),
     },
     run: async (input, { workspaceId }) => {
       const id = await resolveTrackId(workspaceId, input);
-      return { trackId: id, country: input.country, rankings: await rankingsFor(id, input.terms, input.country) };
+      const list = [...new Set(input.countries ?? (input.country ? [input.country] : []))];
+      if (!list.length) throw new HttpError(400, "Provide country or countries");
+      const results = await Promise.all(list.map(async (c) => ({ country: c, rankings: await rankingsFor(id, input.terms, c) })));
+      return list.length === 1 && !input.countries ? { trackId: id, country: list[0], rankings: results[0].rankings } : { trackId: id, results };
     },
   }),
   defineTool({

@@ -102,6 +102,51 @@ export function aggregateDay(keywords: readonly TrendKeyword[], index: number, d
   };
 }
 
+function sameSetDelta(keywords: readonly TrendKeyword[], i: number) {
+  let before = 0;
+  let after = 0;
+  let bestBefore = 0;
+  let bestAfter = 0;
+  for (const k of keywords) {
+    if (k.since == null || i < k.since) continue;
+    before += dailySearchInstalls(k.popularity[i], k.country, k.position[i]);
+    after += dailySearchInstalls(k.popularity[i + 1], k.country, k.position[i + 1]);
+    bestBefore += dailySearchInstalls(k.popularity[i], k.country, 1);
+    bestAfter += dailySearchInstalls(k.popularity[i + 1], k.country, 1);
+  }
+  const vis = (num: number, den: number) => (den > 0 ? (100 * num) / den : null);
+  const vb = vis(before, bestBefore);
+  const va = vis(after, bestAfter);
+  return { installs: after - before, visibility: vb == null || va == null ? 0 : va - vb };
+}
+
+export function likeForLike(keywords: readonly TrendKeyword[], points: TrendPoint[]): TrendPoint[] {
+  const end = points.length - 1;
+  if (end < 1) return points;
+  const installs: number[] = new Array(points.length);
+  const visibility: (number | null)[] = new Array(points.length);
+  installs[end] = points[end].installs;
+  visibility[end] = points[end].visibility;
+  for (let i = end - 1; i >= 0; i--) {
+    if (!points[i].tracked) {
+      installs[i] = 0;
+      visibility[i] = null;
+      continue;
+    }
+    const d = sameSetDelta(keywords, i);
+    installs[i] = Math.max(0, installs[i + 1] - d.installs);
+    const next = visibility[i + 1];
+    visibility[i] = next == null ? points[i].visibility : Math.min(100, Math.max(0, next - d.visibility));
+  }
+  return points.map((p, i) => ({
+    ...p,
+    installsRaw: p.installs,
+    visibilityRaw: p.visibility,
+    installs: round(installs[i], 2),
+    visibility: visibility[i] == null ? null : round(visibility[i] as number, 1),
+  }));
+}
+
 export function kpisOf(point: TrendPoint | undefined): TrendKpis | null {
   if (!point || !point.tracked) return null;
   return {
@@ -168,14 +213,18 @@ export function computeCountries(keywords: readonly TrendKeyword[], dates: reado
   return [...groups]
     .map(([country, list]) => {
       const last = aggregateDay(list, end, dates[end]);
-      const first = baseline == null ? null : aggregateDay(list, baseline, dates[baseline]);
+      const cohort = baseline == null ? [] : list.filter((k) => k.since != null && k.since <= baseline);
+      const first = baseline == null || !cohort.length ? null : aggregateDay(cohort, baseline, dates[baseline]);
+      const then = first ? aggregateDay(cohort, end, dates[end]) : null;
+      const visibilityStart =
+        first?.visibility != null && then?.visibility != null && last.visibility != null ? round(Math.max(0, last.visibility - (then.visibility - first.visibility)), 1) : null;
       return {
         country,
         keywords: list.length,
         visibility: last.visibility,
-        visibilityStart: first?.tracked ? first.visibility : null,
+        visibilityStart,
         installs: last.installs,
-        installsStart: first?.installs ?? 0,
+        installsStart: first && then ? round(Math.max(0, last.installs - (then.installs - first.installs)), 2) : 0,
       };
     })
     .sort((a, b) => b.installs - a.installs || (b.visibility ?? 0) - (a.visibility ?? 0));

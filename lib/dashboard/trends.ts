@@ -3,6 +3,7 @@ import {
   aggregateDay,
   computeMovers,
   dailySearchInstalls,
+  likeForLike,
 } from "@/lib/trends/compute";
 import { getTrends } from "@/lib/trends/service";
 import type {
@@ -58,7 +59,7 @@ export function combinedPoints(list: AppTrends[]): TrendPoint[] {
   const keywords = ready
     .filter((x) => x.trends.to === ready[0].trends.to)
     .flatMap((x) => x.trends.keywords);
-  return dates.map((date, i) => aggregateDay(keywords, i, date));
+  return likeForLike(keywords, dates.map((date, i) => aggregateDay(keywords, i, date)));
 }
 
 export function compareIndex(points: TrendPoint[], days = COMPARE_DAYS) {

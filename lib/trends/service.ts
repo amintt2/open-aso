@@ -2,7 +2,7 @@ import { getApp, listVersions } from "@/lib/aso/apps";
 import type { RelevanceCategory } from "@/lib/relevance/types";
 import { cached, wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
-import { aggregateDay, computeCountries, computeMovers, fillSeries, kpisOf, windowDates, type KeywordMeta, type SnapshotRow } from "./compute";
+import { aggregateDay, computeCountries, likeForLike, computeMovers, fillSeries, kpisOf, windowDates, type KeywordMeta, type SnapshotRow } from "./compute";
 import { EXCLUDED_CATEGORIES, type TrendDays, type TrendsResult } from "./types";
 
 export type TrendsOptions = {
@@ -90,7 +90,7 @@ async function loadTrends(
     return fillSeries(meta, dates, byKeyword.get(r.id) ?? []);
   });
 
-  const points = dates.map((date, i) => aggregateDay(keywords, i, date));
+  const points = likeForLike(keywords, dates.map((date, i) => aggregateDay(keywords, i, date)));
   const firstTracked = points.findIndex((p) => p.tracked > 0);
   const baselineIndex = firstTracked >= 0 ? firstTracked : null;
   const end = dates.length - 1;

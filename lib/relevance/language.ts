@@ -60,7 +60,8 @@ export function searchLanguages(country: string): string[] {
 
 function allowedScripts(country: string) {
   const out = new Set<Script>(["latin"]);
-  for (const locale of searchLocales(country)) for (const s of LOCALE_SCRIPTS[base(locale)] ?? []) out.add(s);
+  const locales = isCountry(country) ? getCountry(country).indexedLocales : ["en-US"];
+  for (const locale of locales) for (const s of LOCALE_SCRIPTS[base(locale)] ?? []) out.add(s);
   return out;
 }
 

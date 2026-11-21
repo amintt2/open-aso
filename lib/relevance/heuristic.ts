@@ -9,6 +9,7 @@ export type HeuristicProfile = {
   genre: string | null;
   tracked: { term: string; position: number | null }[];
   competitors: string[];
+  listings?: { title: string; subtitle: string | null; keywords: string | null }[];
 };
 
 export type Vocabulary = { weights: Map<string, number>; brands: Set<string> };
@@ -43,6 +44,11 @@ export function buildVocabulary(p: HeuristicProfile): Vocabulary {
   for (const [w, n] of counts) weights.set(w, n >= 3 ? 0.7 : n === 2 ? 0.5 : 0.25);
   if (p.genre) bump(weights, p.genre, 0.5);
   for (const k of p.tracked) if (k.position != null && k.position <= 50) bump(weights, k.term, 0.7);
+  for (const l of p.listings ?? []) {
+    bump(weights, (l.keywords ?? "").replace(/[,،、，;]/g, " "), 0.75);
+    bump(weights, l.subtitle ?? "", 0.9);
+    bump(weights, l.title, 1);
+  }
   bump(weights, p.subtitle ?? "", 0.9);
   bump(weights, p.title, 1);
 

@@ -277,7 +277,7 @@ function SubRowBase({ keyword: k, selected, refreshing, handlers }: SubRowProps)
         </TableCell>
         <TableCell className="caption-style text-subtle">{k.country.toUpperCase()}</TableCell>
         <TableCell>
-          <RelevanceCell relevance={k.relevance} category={k.relevanceCategory} source={k.relevanceSource} languageMatch={k.languageMatch} />
+          <RelevanceCell relevance={k.relevance} category={k.relevanceCategory} source={k.relevanceSource} languageMatch={k.languageMatch} coverage={k.coverage} />
         </TableCell>
         <TableCell>{pending ? <span className="text-subtle">—</span> : <PositionBadge position={k.position} change={k.positionChange} />}</TableCell>
         <TableCell>

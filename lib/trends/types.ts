@@ -16,6 +16,8 @@ export type TrendPoint = RankBuckets & {
   visibility: number | null;
   avgPosition: number | null;
   top10Share: number | null;
+  installsRaw?: number;
+  visibilityRaw?: number | null;
 };
 
 export type TrendKpis = {

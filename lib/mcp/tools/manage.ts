@@ -9,6 +9,7 @@ import { getProductPrices, listProducts } from "@/lib/asc/pricing";
 import { ALPHA3 } from "@/lib/asc/territories";
 import { METADATA_LIMITS, type LocaleMetadata, type MetadataPatch, type TerritoryPrice } from "@/lib/asc/types";
 import { HttpError } from "@/lib/server/http";
+import { pruneKeywords } from "@/lib/keywords/prune";
 import { isStopword, tokenize } from "@/lib/suggestions/text";
 import { defineTool } from "../define";
 import { appId, compactKeyword, confirm, countryFor, dryRun, ESTIMATE_NOTE, optionalCountry, requireWrites, shouldApply, trackId, truncate } from "./shared";
@@ -95,6 +96,27 @@ export const manageTools = [
       const unique = [...new Set(keywordIds)];
       await deleteKeywords(workspaceId, unique);
       return { appId: id, removed: unique.map((k) => ({ id: k, term: owned.get(k)?.term, country: owned.get(k)?.country })) };
+    },
+  }),
+  defineTool({
+    name: "prune_keywords",
+    title: "Clean up noise keywords",
+    layer: "manage",
+    write: true,
+    description:
+      "Find tracked keywords that are noise: not in the app's indexed metadata for that storefront (title, subtitle, keyword field of every locale the storefront indexes), not ranked in the top 200, and judged unrelated, a competitor brand or in the wrong script. Liked keywords and keywords with notes are never touched. dryRun (default) lists them with reasons and per-country counts; dryRun: false + confirm: true deletes them (optionally only the ids you pass).",
+    input: {
+      appId,
+      country: optionalCountry.describe("Storefront code. Omit for every country."),
+      keywordIds: z.array(z.number().int().positive()).max(2000).optional().describe("Only delete these candidate ids"),
+      limit: z.number().int().min(1).max(500).default(100).describe("Candidates to list in the answer (default 100)"),
+      dryRun,
+      confirm,
+    },
+    run: async ({ appId: id, country: c, keywordIds, limit: n, dryRun: dry, confirm: ok }, { workspaceId }) => {
+      const apply = await shouldApply(workspaceId, { dryRun: dry, confirm: ok });
+      const result = await pruneKeywords(workspaceId, id, { country: c, apply, ids: keywordIds });
+      return { ...result, applied: apply, candidateCount: result.candidates.length, candidates: result.candidates.slice(0, n) };
     },
   }),
   defineTool({
