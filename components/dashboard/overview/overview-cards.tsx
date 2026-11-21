@@ -26,8 +26,9 @@ import type {
 } from "@/lib/dashboard/types";
 import type { InsightSeverity } from "@/lib/insights/types";
 import { cn } from "@/lib/utils";
-import { Caption, ConnectTile, TileSkeletons } from "../kpi-tiles";
-import { AbsDelta, Flag, formatScore, PctDelta } from "../parts";
+import { formatReach, REACH_HINT } from "@/components/trends/trends-format";
+import { Caption, TileSkeletons } from "../kpi-tiles";
+import { AbsDelta, Flag, PctDelta } from "../parts";
 import {
   Card,
   ConnectHint,
@@ -47,12 +48,38 @@ function approx(n: number) {
 export function OverviewKpis({ data }: { data: OverviewSummary | undefined }) {
   if (!data)
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <TileSkeletons count={5} />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <TileSkeletons count={4} />
       </div>
     );
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <KpiTile
+        source="estimate"
+        label="Est. search installs / day"
+        value={data.searchInstalls ? approx(data.searchInstalls.current) : "—"}
+        hint="Installs per day the model expects from your current ranks: searches per day × the share of taps a rank gets × 40% install rate, averaged over 7 days. Apple's first-time downloads in the funnel above are the real number."
+        delta={
+          data.searchInstalls ? (
+            <PctDelta period={data.searchInstalls} />
+          ) : (
+            <Caption>Needs rankings</Caption>
+          )
+        }
+      />
+      <KpiTile
+        source="estimate"
+        label="Search reach"
+        value={formatReach(data.searchReach?.current)}
+        hint={REACH_HINT}
+        delta={
+          data.targets ? (
+            <AbsDelta period={data.searchReach} digits={1} unit=" pts" />
+          ) : (
+            <Caption>No tracked keyword is in your metadata</Caption>
+          )
+        }
+      />
       <KpiTile
         source="measured"
         label="Keywords in top 10 / top 3"
@@ -72,41 +99,6 @@ export function OverviewKpis({ data }: { data: OverviewSummary | undefined }) {
         }
         hint="Average rank across the keywords where this app is in the top 200 today. Lower is better."
         delta={<AbsDelta period={data.avgPosition} digits={1} invert />}
-      />
-      {data.revenue ? (
-        <KpiTile
-          source="revenue"
-          label="Net revenue · 7d"
-          value={formatUsd(data.revenue.current)}
-          hint="Revenue after refunds over the last 7 days, in USD, all countries, from RevenueCat or Superwall"
-          delta={<PctDelta period={data.revenue} />}
-        />
-      ) : (
-        <ConnectTile
-          label="Net revenue · 7d"
-          hint="Connect RevenueCat or Superwall"
-          href="/integrations"
-        />
-      )}
-      <KpiTile
-        source="estimate"
-        label="Search visibility · 0–100"
-        value={formatScore(data.visibility?.current)}
-        hint="Share of the search installs you would get if you ranked #1 for every tracked keyword. 100 means #1 everywhere. Modeled from popularity and your ranks."
-        delta={<AbsDelta period={data.visibility} digits={1} unit=" pts" />}
-      />
-      <KpiTile
-        source="estimate"
-        label="Est. search installs / day"
-        value={data.searchInstalls ? approx(data.searchInstalls.current) : "—"}
-        hint="Modeled installs per day from tracked keywords: popularity × the share of taps your rank usually gets, averaged over 7 days. Apple's first-time downloads above are the real number."
-        delta={
-          data.searchInstalls ? (
-            <PctDelta period={data.searchInstalls} />
-          ) : (
-            <Caption>Needs rankings</Caption>
-          )
-        }
       />
     </div>
   );
@@ -448,12 +440,12 @@ export function FunnelCard({ appId }: { appId: number }) {
     : [];
   return (
     <Card
-      title="Conversion funnel · 7d"
+      title="In-app funnel · 7d"
       badge={
         data?.mode === "demo" ? <DemoTag title={data.notice} /> : undefined
       }
       actions={
-        <MoreLink href={`/analytics?tab=product&app=${appId}`}>Funnel</MoreLink>
+        <MoreLink href={`/apps/${appId}/traffic?view=funnel`}>Funnel</MoreLink>
       }
     >
       {!data ? (

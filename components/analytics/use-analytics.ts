@@ -6,6 +6,7 @@ export type AnalyticsFilterState = {
   appId: string;
   days: number;
   sandbox: boolean;
+  demo?: "only" | "never";
 };
 
 export function analyticsUrl(
@@ -16,6 +17,7 @@ export function analyticsUrl(
   const qs = new URLSearchParams({ days: String(filters.days), ...extra });
   if (filters.appId !== "all") qs.set("appId", filters.appId);
   if (filters.sandbox) qs.set("sandbox", "1");
+  if (filters.demo && !extra?.demo) qs.set("demo", filters.demo);
   return `/api/analytics/${view}?${qs.toString()}`;
 }
 

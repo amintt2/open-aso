@@ -1,5 +1,6 @@
-import StoreAnalyticsView from "@/components/store-analytics/store-analytics-view";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-  return <StoreAnalyticsView />;
+export default async function Page({ params }: { params: Promise<{ appId: string }> }) {
+  const { appId } = await params;
+  redirect(`/apps/${appId}/traffic`);
 }

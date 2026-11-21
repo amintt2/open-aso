@@ -1,4 +1,5 @@
 import { getOverview } from "@/lib/analytics/queries";
+import { getStoreSummary } from "@/lib/asc/analytics/service";
 import { isAscConfigured } from "@/lib/asc/client";
 import { getConnection, getDashboard } from "@/lib/apple-ads/service";
 import { egressStats } from "@/lib/appstore/egress";
@@ -178,7 +179,7 @@ export function getHomeKpis(workspaceId: string): Promise<HomeKpis> {
       trackedKeywords: counts?.total ?? 0,
       addedThisWeek: counts?.added ?? 0,
       top10: periodOf(points, (p) => (p.tracked ? p.top3 + p.top10 : null)),
-      visibility: periodOf(points, (p) => (p.tracked ? p.visibility : null)),
+      searchReach: periodOf(points, (p) => (p.tracked ? p.reach : null)),
       searchInstalls: averagePeriod(points, (p) => p.installs),
       installs: observed.installs,
       revenue: observed.revenue
@@ -244,7 +245,12 @@ async function appsFrom(
       const w = warningsFor(byApp.get(app.id) ?? []);
       const end = trends ? trends.points.length - 1 : -1;
       const last = trends?.kpis.end ?? null;
-      const start = trends?.kpis.start ?? null;
+      const [store, observed] = app.isMine
+        ? await Promise.all([
+            getStoreSummary(workspaceId, app.id).catch(() => null),
+            observedPeriods(workspaceId, 7, app.id).catch(() => null),
+          ])
+        : [null, null];
       const warnings: AppWarnings = {
         unrelated: w.unrelated,
         wrongLanguage: w.wrongLanguage,
@@ -262,19 +268,33 @@ async function appsFrom(
         primaryCountry: app.primaryCountry,
         keywordCount: app.keywordCount,
         countries: app.countries,
+        isMine: app.isMine,
         series: trends
           ? trends.points.map((p) => ({
               date: p.date,
-              visibility: p.tracked ? p.visibility : null,
+              installs: p.tracked ? p.installs : null,
             }))
           : [],
-        visibility: last?.visibility ?? null,
-        visibilityChange:
-          last?.visibility != null &&
-          start?.visibility != null &&
-          start.date !== last.date
-            ? Math.round((last.visibility - start.visibility) * 10) / 10
+        searchInstalls: trends
+          ? averagePeriod(trends.points, (p) => p.installs)
+          : null,
+        searchReach: last?.reach ?? null,
+        downloads:
+          store?.state === "ok" && store.firstDownloads
+            ? {
+                ...store.firstDownloads,
+                dataThrough: store.dataThrough,
+                demo: store.demo,
+              }
             : null,
+        firstOpens:
+          observed?.installs?.source === "posthog"
+            ? {
+                current: observed.installs.current,
+                previous: observed.installs.previous,
+              }
+            : null,
+        revenue: observed?.revenue ?? null,
         avgPosition: last?.avgPosition ?? null,
         top10: last?.top10 ?? 0,
         top3: last?.top3 ?? 0,

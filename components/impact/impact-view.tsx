@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FlaskConical, Info, TrendingUp } from "lucide-react";
 import Button from "@/components/_ui/button";
+import KeywordRoasTab from "@/components/analytics/keyword-roas-tab";
 import { ErrorBlock, KpiTile, LoadingBlock } from "@/components/analytics/parts";
 import CountrySelect from "@/components/shell/country-select";
 import EmptyState from "@/components/shell/empty-state";
 import PageHeader from "@/components/shell/page-header";
+import { Segmented } from "@/components/store-analytics/parts";
 import { ALL_COUNTRIES, useAppCountry, useCurrentApp } from "@/hooks/use-app";
 import { useApi } from "@/lib/client/api";
 import { formatCompact, formatPercent } from "@/lib/client/format";
@@ -118,14 +121,23 @@ function ModeBanner({ data, onDemo }: { data: ImpactResult; onDemo: (mode: "auto
   return null;
 }
 
+const VIEWS: { key: "organic" | "ads"; label: string }[] = [
+  { key: "organic", label: "Organic search" },
+  { key: "ads", label: "Apple Ads ROAS" },
+];
+
 export default function ImpactView() {
   const { app, appId, error: appError } = useCurrentApp();
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const view = params.get("view") === "ads" ? "ads" : "organic";
   const [storedCountry, setCountry] = useAppCountry(app, { allowAll: true });
-  const [days, setDays] = useState<(typeof PERIODS)[number]>(30);
+  const [days, setDays] = useState<(typeof PERIODS)[number]>(PERIODS.find((d) => d === Number(params.get("days"))) ?? 30);
   const [demo, setDemo] = useState<"auto" | "never">("auto");
   const countries = app?.countries ?? [];
   const country = storedCountry === ALL_COUNTRIES || countries.includes(storedCountry) ? storedCountry : ALL_COUNTRIES;
-  const { data, error } = useApi<ImpactResult>(app ? `/api/impact?appId=${appId}&country=${country}&days=${days}&demo=${demo}` : null, { keepPreviousData: true });
+  const { data, error } = useApi<ImpactResult>(app && view === "organic" ? `/api/impact?appId=${appId}&country=${country}&days=${days}&demo=${demo}` : null, { keepPreviousData: true });
 
   if (appError) return <EmptyState icon={TrendingUp} title="App not found" description="This app is no longer tracked." />;
 
@@ -133,10 +145,11 @@ export default function ImpactView() {
     <>
       <PageHeader
         title="Keyword Impact"
-        description="Which keywords bring installs and revenue? Modeled, calibrated on real installs when connected."
+        description="Which keywords bring installs and revenue: organic search (modeled) and Apple Ads (measured)."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <CountrySelect value={country} onChange={setCountry} only={countries} allOption={{ value: ALL_COUNTRIES, label: "All countries" }} />
+            <Segmented label="Keyword source" value={view} options={VIEWS} onChange={(v) => router.replace(v === "ads" ? `${pathname}?view=ads` : pathname, { scroll: false })} />
+            {view === "organic" && <CountrySelect value={country} onChange={setCountry} only={countries} allOption={{ value: ALL_COUNTRIES, label: "All countries" }} />}
             <div role="radiogroup" aria-label="Period" className="bg-secondary flex h-[30px] items-center rounded-full p-0.5 shadow-[0px_0px_0px_1px_rgba(0,0,0,0.4),inset_0px_1px_0px_0px_rgba(255,255,255,0.1)]">
               {PERIODS.map((d) => (
                 <button
@@ -156,7 +169,12 @@ export default function ImpactView() {
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 p-4">
-          {error ? (
+          {view === "ads" ? (
+            <>
+              <p className="caption-style text-subtle">Spend, installs, trials and revenue per Apple Ads keyword over the last {days} days. Spend comes from Apple Ads, installs and revenue from the Open ASO SDK and your revenue provider.</p>
+              <KeywordRoasTab filters={{ appId: String(appId), days, sandbox: false }} />
+            </>
+          ) : error ? (
             <ErrorBlock message={error.message} />
           ) : !data ? (
             <LoadingBlock />

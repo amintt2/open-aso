@@ -4,17 +4,17 @@ import { LayoutGrid } from "lucide-react";
 import CountrySelect from "@/components/shell/country-select";
 import EmptyState from "@/components/shell/empty-state";
 import PageHeader from "@/components/shell/page-header";
-import StoreRow from "@/components/store-analytics/store-row";
+import FunnelStrip from "@/components/traffic/funnel-strip";
+import Reconcile from "@/components/traffic/reconcile";
 import DistributionChart from "@/components/trends/distribution-chart";
-import VisibilityChart from "@/components/trends/visibility-chart";
+import SearchChart from "@/components/trends/search-chart";
 import { ALL_COUNTRIES, useAppCountry, useCurrentApp } from "@/hooks/use-app";
 import { useApi } from "@/lib/client/api";
 import type { OverviewSummary } from "@/lib/dashboard/types";
+import type { TrafficResult } from "@/lib/traffic/types";
 import type { TrendsResult } from "@/lib/trends/types";
-import { PosthogRow } from "../kpi-tiles";
 import MoversList from "../movers-list";
 import { SectionTitle } from "../parts";
-import { DownloadsMap, Experiments, LiveEvents } from "../posthog-widgets";
 import { Card, MoreLink, Skeleton, SkeletonRows, WidgetError } from "../widget";
 import {
   AdsCard,
@@ -43,13 +43,34 @@ function TrendCharts({ appId, country }: { appId: number; country: string }) {
     );
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <VisibilityChart
+      <SearchChart
         points={data.points}
         versions={data.versions}
         days={data.days}
+        contributors={data.contributors}
+        appId={appId}
       />
       <DistributionChart points={data.points} days={data.days} />
     </div>
+  );
+}
+
+function Funnel({ appId, country }: { appId: number; country: string }) {
+  const { data, error } = useApi<TrafficResult>(
+    `/api/apps/${appId}/traffic?days=30&country=${country}&demo=0`,
+    { keepPreviousData: true },
+  );
+  if (error && !data) return <WidgetError message={error.message} />;
+  if (!data) return <Skeleton className="h-[92px] w-full rounded-xl" />;
+  return (
+    <>
+      <FunnelStrip
+        data={data}
+        href={`/apps/${appId}/traffic`}
+        action={<MoreLink href={`/apps/${appId}/traffic`}>Traffic</MoreLink>}
+      />
+      <Reconcile items={data.reconcile} />
+    </>
   );
 }
 
@@ -106,7 +127,7 @@ export default function OverviewView() {
     <>
       <PageHeader
         title="Overview"
-        description="How is this app doing: real App Store traffic first, then rankings, then estimates."
+        description="How is this app doing: the real funnel first, then where its keywords rank."
         actions={
           app && (
             <CountrySelect
@@ -127,15 +148,14 @@ export default function OverviewView() {
         {!summary && !error && (
           <Skeleton className="h-[90px] w-full rounded-xl" />
         )}
-        {app && <StoreRow appId={appId} />}
+        {app && <Funnel appId={appId} country={country} />}
         <SectionTitle>
-          Search rankings and revenue ·{" "}
+          Search rankings ·{" "}
           {country === ALL_COUNTRIES ? "all countries" : country.toUpperCase()}
         </SectionTitle>
         <OverviewKpis data={summary} />
         {app && (
           <>
-            <PosthogRow appId={appId} />
             <TrendCharts appId={appId} country={country} />
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               <div className="min-w-0 xl:col-span-2">
@@ -151,13 +171,6 @@ export default function OverviewView() {
               <ReviewsCard appId={appId} country={country} />
               <OpportunitiesCard appId={appId} />
             </div>
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <div className="min-w-0 xl:col-span-2">
-                <DownloadsMap appId={appId} />
-              </div>
-              <LiveEvents appId={appId} />
-            </div>
-            <Experiments appId={appId} />
           </>
         )}
       </div>

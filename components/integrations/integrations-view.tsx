@@ -277,12 +277,12 @@ export default function IntegrationsView() {
             <div className="flex flex-col gap-1.5">
               <h2 className="h3-style">See it come together</h2>
               <p className="caption-style text-subtle">
-                Installs, trials, revenue, retention and keyword ROAS are on the
-                Analytics page.
+                Connect once here. Downloads, first opens, trials, revenue and
+                retention then show up in each app, under Traffic.
               </p>
             </div>
             <Button variant="secondary" size="sm" href="/analytics">
-              Open Analytics
+              Open Traffic
             </Button>
           </div>
         </div>

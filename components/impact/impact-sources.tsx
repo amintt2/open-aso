@@ -10,7 +10,7 @@ const SOURCES: { key: keyof Omit<ImpactDataSources, "observed" | "errors" | "cal
   { key: "sdk", label: "Open ASO SDK", href: "/integrations", use: "installs by source" },
   { key: "revenue", label: "RevenueCat / Superwall", href: "/integrations", use: "revenue per country" },
   { key: "appleAds", label: "Apple Ads", href: "/apple-ads", use: "paid installs per keyword" },
-  { key: "appleAnalytics", label: "App Store Analytics", href: "store-analytics", use: "App Store search downloads per territory" },
+  { key: "appleAnalytics", label: "App Store Analytics", href: "traffic", use: "App Store search downloads per territory" },
 ];
 
 const ICON: Record<SourceState, typeof Check> = { connected: Check, missing: Plus, error: CircleAlert, demo: FlaskConical };

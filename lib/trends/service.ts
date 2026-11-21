@@ -1,8 +1,9 @@
 import { getApp, listVersions } from "@/lib/aso/apps";
+import { coverageIn, isCovered, storefrontListings } from "@/lib/keywords/coverage";
 import type { RelevanceCategory } from "@/lib/relevance/types";
 import { cached, wsKey } from "@/lib/server/cache";
 import { db } from "@/lib/server/db";
-import { aggregateDay, computeCountries, likeForLike, computeMovers, fillSeries, kpisOf, windowDates, type KeywordMeta, type SnapshotRow } from "./compute";
+import { aggregateDay, computeContributors, computeCountries, likeForLike, computeMovers, fillSeries, kpisOf, windowDates, type KeywordMeta, type SnapshotRow } from "./compute";
 import { EXCLUDED_CATEGORIES, type TrendDays, type TrendsResult } from "./types";
 
 export type TrendsOptions = {
@@ -28,7 +29,7 @@ export async function getTrends(workspaceId: string, appId: number, options: Tre
   const country = options.country.toLowerCase();
   const ids = options.keywordIds?.length ? [...new Set(options.keywordIds)].sort((a, b) => a - b) : null;
   const includeAll = !!options.includeAll;
-  const key = wsKey(workspaceId, `trends:${appId}:${country}:${options.days}:${includeAll ? 1 : 0}:${ids?.join(",") ?? ""}`);
+  const key = wsKey(workspaceId, `trends:v2:${appId}:${country}:${options.days}:${includeAll ? 1 : 0}:${ids?.join(",") ?? ""}`);
   return cached(key, TTL, () => loadTrends(workspaceId, app.id, app.trackId, { country, days: options.days, ids, includeAll }));
 }
 
@@ -58,7 +59,7 @@ async function loadTrends(
   );
   const kept = includeAll ? rows : rows.filter((r) => !EXCLUDED_CATEGORIES.includes(r.relevance_category as RelevanceCategory));
   const keptIds = kept.map((r) => r.id);
-  const [inWindow, carryIn, versions] = await Promise.all([
+  const [inWindow, carryIn, versions, listings] = await Promise.all([
     keptIds.length
       ? db.all<SnapshotRow>(
           `SELECT s.keyword_id AS id, s.date, s.popularity, s.difficulty, s.position ${SNAPSHOT_FROM}
@@ -74,6 +75,7 @@ async function loadTrends(
         )
       : Promise.resolve([]),
     listVersions(trackId),
+    storefrontListings(workspaceId, appId, kept.map((r) => r.country)).catch(() => null),
   ]);
 
   const byKeyword = new Map<number, SnapshotRow[]>();
@@ -86,6 +88,7 @@ async function loadTrends(
       country: r.country,
       popularitySource: (r.popularity_source as "apple" | "estimate" | null) ?? null,
       relevanceCategory: (r.relevance_category as RelevanceCategory | null) ?? null,
+      target: !EXCLUDED_CATEGORIES.includes(r.relevance_category as RelevanceCategory) && isCovered(coverageIn(listings?.get(r.country) ?? null, r.term)),
     };
     return fillSeries(meta, dates, byKeyword.get(r.id) ?? []);
   });
@@ -112,6 +115,7 @@ async function loadTrends(
     countries: computeCountries(keywords, dates, baselineIndex),
     keywords,
     movers: computeMovers(keywords, baselineIndex, end),
+    contributors: computeContributors(keywords, baselineIndex, end),
     versions: versions
       .map((v) => ({ version: v.version, releasedAt: v.releasedAt, date: v.releasedAt.slice(0, 10) }))
       .filter((v) => v.date >= from && v.date <= today),

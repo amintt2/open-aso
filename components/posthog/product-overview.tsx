@@ -56,7 +56,7 @@ export default function ProductOverview({
             />
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
               <KpiTile
-                label="New users"
+                label="First opens"
                 value={formatCompact(t.newUsers)}
                 delta={
                   <Delta current={t.newUsers} previous={t.previousNewUsers} />
@@ -85,12 +85,12 @@ export default function ProductOverview({
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               <Panel
-                title="New users & daily actives"
-                description="New users are people whose first-open event fired that day."
+                title="First opens & daily actives"
+                description="First opens are people whose first-open event fired that day: the same count as the First opens step of the funnel."
                 actions={
                   <Legend
                     items={[
-                      { label: "New users", color: SERIES.blue },
+                      { label: "First opens", color: SERIES.blue },
                       { label: "DAU", color: SERIES.orange },
                     ]}
                   />
@@ -125,7 +125,7 @@ export default function ProductOverview({
                             {...props}
                             rows={(pt) => [
                               {
-                                label: "New users",
+                                label: "First opens",
                                 value: formatCompact(pt.newUsers as number),
                                 color: SERIES.blue,
                               },

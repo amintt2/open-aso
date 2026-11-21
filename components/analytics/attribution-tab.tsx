@@ -77,7 +77,7 @@ function SourceCard({ row, share }: { row: SourceRow; share: number | null }) {
   );
 }
 
-export default function SourcesTab({
+export default function AttributionTab({
   filters,
 }: {
   filters: AnalyticsFilterState;
@@ -100,8 +100,8 @@ export default function SourcesTab({
         ))}
       </div>
       <Panel
-        title="Installs by source"
-        description="Trials, conversion and revenue are cohort-based: they follow users who installed in this period."
+        title="Installs by channel · SDK attribution"
+        description="Apple Ads versus organic, as attributed by the Open ASO SDK. Trials, conversion and revenue are cohort-based: they follow users who installed in this period."
         actions={
           <Legend
             items={Object.values(SOURCE_META).map((m) => ({

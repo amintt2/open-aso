@@ -1,7 +1,6 @@
 import {
   Activity,
-  BarChart3,
-  ChartColumnIncreasing,
+  ArrowLeftRight,
   Compass,
   Globe2,
   KeyRound,
@@ -36,9 +35,9 @@ export const APP_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "Traffic & downloads",
+    title: "Traffic & revenue",
     items: [
-      { slug: "store-analytics", label: "App Store Analytics", icon: ChartColumnIncreasing },
+      { slug: "traffic", label: "Traffic", icon: ArrowLeftRight },
       { slug: "impact", label: "Keyword Impact", icon: TrendingUp },
     ],
   },
@@ -65,7 +64,6 @@ export const GLOBAL_NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/explore", label: "Explore", icon: Compass },
   { href: "/apple-ads", label: "Apple Ads", icon: Megaphone },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/integrations", label: "Integrations", icon: PlugZap },
   { href: "/mcp", label: "MCP Server", icon: Terminal },
   { href: "/settings", label: "Settings", icon: Settings },

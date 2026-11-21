@@ -4,7 +4,7 @@ import { KpiTile } from "@/components/analytics/parts";
 import { shortDate } from "@/components/analytics/chart-kit";
 import type { TrendKpis } from "@/lib/trends/types";
 import { cn } from "@/lib/utils";
-import { formatInstalls } from "./trends-format";
+import { approxInstalls, formatInstalls, formatReach, REACH_HINT } from "./trends-format";
 
 type Change = { value: number | null; good: boolean | null; text: string };
 
@@ -41,16 +41,9 @@ export default function TrendsKpis({ start, end }: { start: TrendKpis | null; en
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       <KpiTile
         source="estimate"
-        label="Search visibility · 0–100"
-        hint="Share of the search installs you would get if you ranked #1 for every tracked keyword. 100 means #1 everywhere. Modeled from popularity and your ranks."
-        value={end?.visibility == null ? "—" : end.visibility.toFixed(1)}
-        delta={<DeltaLine since={since} change={points(diff(end?.visibility, start?.visibility, 1), "pts", 1)} />}
-      />
-      <KpiTile
-        source="estimate"
         label="Est. search installs / day"
-        hint="Modeled daily installs from tracked keywords: searches per day × the share of taps your position usually gets × a 40% install rate"
-        value={end ? `~${formatInstalls(end.installs)}` : "—"}
+        hint="Installs per day the model expects from your current ranks: searches per day × the share of taps your position usually gets × a 40% install rate. Compare with Apple's first-time downloads in Traffic."
+        value={approxInstalls(end?.installs)}
         delta={
           <DeltaLine
             since={since}
@@ -60,6 +53,19 @@ export default function TrendsKpis({ start, end }: { start: TrendKpis | null; en
               text: installPct == null ? formatInstalls(Math.abs(installChange ?? 0)) : `${Math.abs(installPct * 100).toFixed(1)}%`,
             }}
           />
+        }
+      />
+      <KpiTile
+        source="estimate"
+        label="Search reach"
+        hint={REACH_HINT}
+        value={formatReach(end?.reach)}
+        delta={
+          end && !end.targets ? (
+            <span className="caption-style text-subtle truncate">No tracked keyword is in your metadata</span>
+          ) : (
+            <DeltaLine since={since} change={points(diff(end?.reach, start?.reach, 1), "pts", 1)} />
+          )
         }
       />
       <KpiTile

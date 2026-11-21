@@ -149,7 +149,7 @@ export function QuickActions({ appId }: { appId?: number }) {
         <Action
           icon={LineChart}
           label="Open Trends"
-          description="Rankings and visibility over time"
+          description="Rankings and search installs over time"
           href={`/apps/${id}/trends`}
         />
       )}

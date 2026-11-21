@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import AppIcon from "@/components/shell/app-icon";
-import { Segmented } from "@/components/trends/visibility-chart";
+import { Segmented } from "@/components/trends/search-chart";
 import type { AppRef } from "@/lib/dashboard/types";
 import type { TrendMover } from "@/lib/trends/types";
 import { cn } from "@/lib/utils";

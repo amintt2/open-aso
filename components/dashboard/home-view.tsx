@@ -5,40 +5,14 @@ import Button from "@/components/_ui/button";
 import { AddToClaudeButton, ClaudeConnectBanner, useClaudeConnect } from "@/components/mcp/claude-connect";
 import type { HomeClaude } from "@/components/mcp/types";
 import PageHeader from "@/components/shell/page-header";
-import StoreRow from "@/components/store-analytics/store-row";
 import { useApi } from "@/lib/client/api";
-import type { HomeKpis, MoversResult } from "@/lib/dashboard/types";
+import type { MoversResult } from "@/lib/dashboard/types";
 import { useUiStore } from "@/stores/ui-store";
 import { AlertsList, QuickActions } from "./alerts-actions";
-import AppsGrid from "./apps-grid";
-import { InstallsRevenueChart, VisibilityLines } from "./home-charts";
-import {
-  AsoTiles,
-  BusinessTiles,
-  PosthogRow,
-  TileSkeletons,
-} from "./kpi-tiles";
+import AppsTable from "./apps-table";
 import MoversList from "./movers-list";
 import { SectionTitle } from "./parts";
-import { DownloadsMap, Experiments, LiveEvents } from "./posthog-widgets";
 import { Card, SkeletonRows, WidgetError } from "./widget";
-
-function KpiRow() {
-  const { data, error } = useApi<HomeKpis>("/api/dashboard/kpis");
-  if (error && !data) return <WidgetError message={error.message} />;
-  return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-12 md:*:col-span-3 md:[&>*:nth-child(n+5)]:col-span-6">
-      {data ? (
-        <>
-          <AsoTiles data={data} />
-          <BusinessTiles data={data} />
-        </>
-      ) : (
-        <TileSkeletons count={6} />
-      )}
-    </div>
-  );
-}
 
 function Movers() {
   const { data, error } = useApi<MoversResult>("/api/dashboard/movers");
@@ -69,7 +43,7 @@ export default function HomeView({ claude }: { claude: HomeClaude }) {
     <>
       <PageHeader
         title="Dashboard"
-        description="All apps at a glance. Numbers tagged Apple are reported, Estimate are modeled."
+        description="One row per app: real downloads, first opens and revenue next to where its keywords rank."
         actions={
           <>
             <Button
@@ -92,17 +66,8 @@ export default function HomeView({ claude }: { claude: HomeClaude }) {
       />
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 p-4">
         {!claude.connected && <ClaudeConnectBanner claude={claude} />}
-        <StoreRow onlyWithData />
-        <SectionTitle>Rankings, revenue and ads · all apps</SectionTitle>
-        <KpiRow />
-        <PosthogRow />
-        <SectionTitle>Apps</SectionTitle>
-        <AppsGrid />
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <VisibilityLines />
-          <InstallsRevenueChart />
-        </div>
-        <DownloadsMap filterable />
+        <SectionTitle>Apps compared · last 7 days</SectionTitle>
+        <AppsTable />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <Movers />
           <Card
@@ -111,12 +76,6 @@ export default function HomeView({ claude }: { claude: HomeClaude }) {
           >
             <AlertsList />
           </Card>
-          <LiveEvents />
-        </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="xl:col-span-2">
-            <Experiments limit={3} />
-          </div>
           <Card title="Quick actions" className="xl:self-start">
             <QuickActions />
           </Card>

@@ -4,7 +4,15 @@ import type { RankBuckets, TrendKeyword } from "@/lib/trends/types";
 
 export const LINE_COLORS = ["#3987e5", "#199e70", "#d95926", "#a66ee0", "#d6a21e", "#2fb5c7", "#e0567a", "#8bbf3f"];
 
-export const VISIBILITY_COLOR = "#16c89e";
+export const SEARCH_COLOR = "#16c89e";
+
+export const REACH_HINT =
+  "Search reach: of the installs you would get by ranking #1 on every keyword that is in your title, subtitle or keyword field, the share your current ranks capture. 100% means #1 on all of them. Keywords not in your metadata, unrelated, brand and archived keywords are left out. Estimate.";
+
+export function formatReach(v: number | null | undefined) {
+  if (v == null) return "—";
+  return v > 0 && v < 0.1 ? "<0.1%" : `${v.toFixed(1)}%`;
+}
 
 export const BUCKETS: { key: keyof RankBuckets; label: string; color: string }[] = [
   { key: "top3", label: "Top 3", color: "#7cc4ff" },
@@ -25,6 +33,11 @@ export function formatInstalls(n: number | null | undefined) {
   if (n > 0 && n < 0.05) return "<0.1";
   if (n < 10) return (Math.round(n * 10) / 10).toString();
   return formatCompact(Math.round(n));
+}
+
+export function approxInstalls(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n > 0 && n < 0.05 ? "<0.1" : `~${formatInstalls(n)}`;
 }
 
 export function flagOf(code: string) {

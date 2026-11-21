@@ -148,8 +148,3 @@ export function SectionTitle({
     </div>
   );
 }
-
-export function formatScore(v: number | null | undefined) {
-  if (v == null) return "—";
-  return v > 0 && v < 0.1 ? "<0.1" : v.toFixed(1);
-}

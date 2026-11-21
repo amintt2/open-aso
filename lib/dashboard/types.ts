@@ -10,7 +10,7 @@ export type HomeKpis = {
   trackedKeywords: number;
   addedThisWeek: number;
   top10: Period | null;
-  visibility: Period | null;
+  searchReach: Period | null;
   searchInstalls: Period | null;
   installs: (Period & { source: "posthog" | "sdk" }) | null;
   revenue: (Period & { providers: string[] }) | null;
@@ -40,9 +40,13 @@ export type DashboardApp = {
   primaryCountry: string;
   keywordCount: number;
   countries: string[];
-  series: { date: string; visibility: number | null }[];
-  visibility: number | null;
-  visibilityChange: number | null;
+  isMine: boolean;
+  series: { date: string; installs: number | null }[];
+  searchInstalls: Period | null;
+  searchReach: number | null;
+  downloads: (Period & { dataThrough: string | null; demo: boolean }) | null;
+  firstOpens: Period | null;
+  revenue: Period | null;
   avgPosition: number | null;
   top10: number;
   top3: number;
@@ -195,7 +199,8 @@ export type OverviewSummary = {
     url: string | null;
   };
   country: string;
-  visibility: Period | null;
+  searchReach: Period | null;
+  targets: number;
   avgPosition: Period | null;
   top10: Period | null;
   top3: Period | null;

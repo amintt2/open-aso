@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/_ui/tabs";
 import { UNRANKED, type TrendKeyword, type TrendVersion } from "@/lib/trends/types";
 import KeywordPicker from "./keyword-picker";
 import { formatPosition, keywordLabel, LINE_COLORS, UNRANKED_LABEL } from "./trends-format";
-import { tickInterval } from "./visibility-chart";
+import { tickInterval } from "./search-chart";
 
 type Metric = "position" | "popularity" | "difficulty";
 

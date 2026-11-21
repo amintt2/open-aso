@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { AXIS_TICK, ChartTooltip, GRID, Legend, Panel, shortDate } from "@/components/analytics/chart-kit";
 import type { TrendPoint } from "@/lib/trends/types";
 import { BUCKETS } from "./trends-format";
-import { tickInterval } from "./visibility-chart";
+import { tickInterval } from "./search-chart";
 
 export default function DistributionChart({ points, days }: { points: TrendPoint[]; days: number }) {
   const data = useMemo(

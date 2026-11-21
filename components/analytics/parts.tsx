@@ -108,7 +108,7 @@ const KPI_SOURCE: Record<
     className: "text-warning",
   },
   revenue: {
-    label: "Reported",
+    label: "RevenueCat",
     title: "Reported by your revenue provider (RevenueCat or Superwall webhooks).",
     className: "text-soft",
   },
@@ -123,6 +123,28 @@ const KPI_SOURCE: Record<
     className: "text-soft",
   },
 };
+
+export function SourceChip({
+  source,
+  label,
+  title,
+  className,
+}: {
+  source: KpiSource;
+  label?: string;
+  title?: string;
+  className?: string;
+}) {
+  const meta = KPI_SOURCE[source];
+  return (
+    <span
+      className={cn("caption-style shrink-0", meta.className, className)}
+      title={title ?? meta.title}
+    >
+      {label ?? meta.label}
+    </span>
+  );
+}
 
 export function KpiTile({
   label,

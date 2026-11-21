@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Download,
@@ -87,6 +88,7 @@ const EMPTY = new Set<number>();
 const NO_GROUPS: KeywordGroup[] = [];
 
 export default function KeywordsView() {
+  const initialQuery = useSearchParams().get("q") ?? "";
   const { appId, app, error: appError } = useCurrentApp();
   const [country, setCountry] = useAppCountry(app, { allowAll: true });
   const allMode = country === ALL_COUNTRIES;
@@ -126,7 +128,7 @@ export default function KeywordsView() {
   );
   const [showArchived, setShowArchived] = useState(false);
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [minCountries, setMinCountries] = useState(1);
   const [sort, setSort] = useState<Sort>({ key: "popularity", dir: "desc" });

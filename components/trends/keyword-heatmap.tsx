@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UNRANKED, type TrendKeyword } from "@/lib/trends/types";
 import { cn } from "@/lib/utils";
 import { flagOf, formatPosition, latest, positionChangeOf, UNRANKED_LABEL } from "./trends-format";
-import { Segmented } from "./visibility-chart";
+import { Segmented } from "./search-chart";
 
 type HeatMetric = "position" | "popularity" | "difficulty" | "delta";
 type SortKey = "popularity" | "change" | "term";

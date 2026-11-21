@@ -13,16 +13,18 @@ export type TrendPoint = RankBuckets & {
   date: string;
   tracked: number;
   installs: number;
-  visibility: number | null;
+  targets: number;
+  reach: number | null;
   avgPosition: number | null;
   top10Share: number | null;
   installsRaw?: number;
-  visibilityRaw?: number | null;
+  reachRaw?: number | null;
 };
 
 export type TrendKpis = {
   date: string;
-  visibility: number | null;
+  reach: number | null;
+  targets: number;
   installs: number;
   avgPosition: number | null;
   top10: number;
@@ -36,6 +38,7 @@ export type TrendKeyword = {
   country: string;
   popularitySource: "apple" | "estimate" | null;
   relevanceCategory: RelevanceCategory | null;
+  target: boolean;
   since: number | null;
   position: (number | null)[];
   popularity: (number | null)[];
@@ -64,13 +67,29 @@ export type TrendMovers = {
   difficulty: TrendMover[];
 };
 
+export type TrendContributor = {
+  id: number;
+  term: string;
+  country: string;
+  target: boolean;
+  startPosition: number | null;
+  endPosition: number | null;
+  popularity: number | null;
+  startInstalls: number;
+  endInstalls: number;
+  installsChange: number;
+};
+
 export type TrendCountry = {
   country: string;
   keywords: number;
-  visibility: number | null;
-  visibilityStart: number | null;
+  targets: number;
+  reach: number | null;
+  reachStart: number | null;
   installs: number;
   installsStart: number;
+  top10: number;
+  bestKeyword: { id: number; term: string; position: number | null; installs: number } | null;
 };
 
 export type TrendVersion = { version: string; date: string; releasedAt: string };
@@ -91,5 +110,6 @@ export type TrendsResult = {
   countries: TrendCountry[];
   keywords: TrendKeyword[];
   movers: TrendMovers;
+  contributors: TrendContributor[];
   versions: TrendVersion[];
 };

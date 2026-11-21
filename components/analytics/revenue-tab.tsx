@@ -12,8 +12,6 @@ import {
   YAxis,
 } from "recharts";
 import type { OverviewResult } from "@/lib/analytics/types";
-import type { PosthogNewUsersResult, PosthogStatus } from "@/lib/posthog/types";
-import { useApi } from "@/lib/client/api";
 import {
   formatCompact,
   formatMoney,
@@ -32,80 +30,44 @@ import {
 import { Delta, DemoBanner, ErrorBlock, KpiTile, LoadingBlock } from "./parts";
 import { useAnalytics, type AnalyticsFilterState } from "./use-analytics";
 
-export default function OverviewTab({
+export default function RevenueTab({
   filters,
 }: {
   filters: AnalyticsFilterState;
 }) {
-  const { data: posthog } = useApi<PosthogStatus>("/api/posthog/status");
-  const posthogReady = !!posthog?.configured && posthog.mappedApps > 0;
-  const { data: raw, error } = useAnalytics<OverviewResult>(
-    "overview",
-    filters,
-    posthogReady ? { demo: "never" } : undefined,
-  );
-  const needsFallback =
-    posthogReady && !!raw && !raw.demo && raw.totals.installs === 0;
-  const { data: fallback } = useApi<PosthogNewUsersResult>(
-    needsFallback
-      ? `/api/posthog/newusers?days=${filters.days}${filters.appId === "all" ? "" : `&appId=${filters.appId}`}`
-      : null,
-    { shouldRetryOnError: false },
-  );
+  const { data, error } = useAnalytics<OverviewResult>("overview", filters);
   if (error) return <ErrorBlock message={error.message} />;
-  if (!raw) return <LoadingBlock />;
-  const viaPosthog =
-    needsFallback && !!fallback && fallback.total + fallback.previousTotal > 0;
-  const posthogDaily = new Map(
-    (viaPosthog ? fallback.series : []).map((pt) => [pt.date, pt.newUsers]),
-  );
-  const data: OverviewResult = viaPosthog
-    ? {
-        ...raw,
-        totals: { ...raw.totals, installs: fallback.total },
-        previous: { ...raw.previous, installs: fallback.previousTotal },
-        series: raw.series.map((pt) => ({
-          ...pt,
-          installs: posthogDaily.get(pt.date) ?? 0,
-        })),
-      }
-    : raw;
-  const installsLabel = viaPosthog ? "Installs via PostHog" : "Installs";
+  if (!data) return <LoadingBlock />;
   const { totals: t, previous: p } = data;
+  const period = `${data.days}d`;
   const tiles = [
     {
-      label: installsLabel,
-      value: formatCompact(t.installs),
-      delta: <Delta current={t.installs} previous={p.installs} />,
-      hint: viaPosthog
-        ? "New users from PostHog first-open events — no SDK installs recorded for this period"
-        : undefined,
-    },
-    {
-      label: "Trials",
+      label: `Trials · ${period}`,
       value: formatCompact(t.trials),
       delta: <Delta current={t.trials} previous={p.trials} />,
+      hint: "Free trials started in the period",
     },
     {
-      label: "Purchases",
+      label: `Purchases · ${period}`,
       value: formatCompact(t.purchases),
       delta: <Delta current={t.purchases} previous={p.purchases} />,
       hint: "New paid purchases and trial conversions",
     },
     {
-      label: "Gross revenue",
+      label: `Gross revenue · ${period}`,
       value: formatUsd(t.grossRevenue),
       delta: <Delta current={t.grossRevenue} previous={p.grossRevenue} />,
     },
     {
-      label: "Refunds",
+      label: `Refunds · ${period}`,
       value: formatUsd(t.refunds),
       delta: <Delta current={t.refunds} previous={p.refunds} invert />,
     },
     {
-      label: "Net revenue",
+      label: `Net revenue · ${period}`,
       value: formatUsd(t.netRevenue),
       delta: <Delta current={t.netRevenue} previous={p.netRevenue} />,
+      hint: "Gross revenue minus refunds, in USD. Same number as the last step of the funnel above.",
     },
   ];
   const tickInterval = data.days > 30 ? 13 : data.days > 7 ? 4 : 0;
@@ -113,20 +75,20 @@ export default function OverviewTab({
   return (
     <div className="flex flex-col gap-4">
       <DemoBanner notice={data.notice} />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {tiles.map((tile) => (
-          <KpiTile key={tile.label} {...tile} />
+          <KpiTile key={tile.label} source="revenue" {...tile} />
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel
-          title="Installs & trials"
-          description={`Daily, last ${data.days} days · trial → paid ${formatPercent(t.trialConversion)}${viaPosthog ? " · installs via PostHog" : ""}`}
+          title="Trials & purchases"
+          description={`Daily, last ${data.days} days · trial → paid ${formatPercent(t.trialConversion)}`}
           actions={
             <Legend
               items={[
-                { label: installsLabel, color: SERIES.blue },
-                { label: "Trials", color: SERIES.orange },
+                { label: "Trials", color: SERIES.blue },
+                { label: "Purchases", color: SERIES.orange },
               ]}
             />
           }
@@ -160,31 +122,27 @@ export default function OverviewTab({
                       {...props}
                       rows={(pt) => [
                         {
-                          label: installsLabel,
-                          value: formatCompact(pt.installs as number),
-                          color: SERIES.blue,
-                        },
-                        {
                           label: "Trials",
                           value: formatCompact(pt.trials as number),
-                          color: SERIES.orange,
+                          color: SERIES.blue,
                         },
                         {
                           label: "Purchases",
                           value: formatCompact(pt.purchases as number),
+                          color: SERIES.orange,
                         },
                       ]}
                     />
                   )}
                 />
                 <Bar
-                  dataKey="installs"
+                  dataKey="trials"
                   fill={SERIES.blue}
                   radius={[4, 4, 0, 0]}
                   maxBarSize={18}
                 />
                 <Line
-                  dataKey="trials"
+                  dataKey="purchases"
                   stroke={SERIES.orange}
                   strokeWidth={2}
                   dot={false}

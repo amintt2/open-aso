@@ -20,7 +20,7 @@ import TrendKeywordSheets, { type SheetPanel } from "./trend-keyword-sheets";
 import TrendMovers from "./trend-movers";
 import { countryName, latest } from "./trends-format";
 import TrendsKpis from "./trends-kpis";
-import VisibilityChart, { Segmented } from "./visibility-chart";
+import SearchChart, { Segmented } from "./search-chart";
 
 const PERIODS: { key: `${TrendDays}`; label: string }[] = [
   { key: "7", label: "7d" },
@@ -98,7 +98,7 @@ export default function TrendsView() {
         <EmptyState
           icon={KeyRound}
           title="Only unrelated or brand keywords here"
-          description="These keywords are left out of the index by default."
+          description="These keywords are left out of the estimates by default."
           action={
             <Button variant="secondary" size="md" onClick={() => setIncludeAll(true)}>
               Include them
@@ -134,7 +134,7 @@ export default function TrendsView() {
       <>
         <TrendsKpis start={d.kpis.start} end={d.kpis.end} />
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <VisibilityChart points={d.points} versions={d.versions} days={d.days} />
+          <SearchChart points={d.points} versions={d.versions} days={d.days} contributors={d.contributors} appId={appId} onOpen={open} />
           <DistributionChart points={d.points} days={d.days} />
         </div>
         <TrendMovers gainers={d.movers.gainers} losers={d.movers.losers} keywords={byId} from={from} multiCountry={multiCountry} onOpen={open} />

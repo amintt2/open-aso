@@ -63,7 +63,8 @@ export function getOverviewSummary(
           url: s.trackViewUrl ?? null,
         },
         country,
-        visibility: periodOf(points, (p) => (p.tracked ? p.visibility : null)),
+        searchReach: periodOf(points, (p) => (p.tracked ? p.reach : null)),
+        targets: trends?.kpis.end?.targets ?? 0,
         avgPosition: periodOf(points, (p) =>
           p.tracked ? p.avgPosition : null,
         ),
