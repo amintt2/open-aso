@@ -5,7 +5,7 @@ import { Menu } from "lucide-react";
 import Button from "@/components/_ui/button";
 import { useUiStore } from "@/stores/ui-store";
 
-export default function PageHeader({ title, badge, actions, children }: { title: ReactNode; badge?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+export default function PageHeader({ title, badge, actions, description, children }: { title: ReactNode; badge?: ReactNode; actions?: ReactNode; description?: string; children?: ReactNode }) {
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
   return (
     <header className="border-border shrink-0 border-b">
@@ -16,6 +16,11 @@ export default function PageHeader({ title, badge, actions, children }: { title:
           </Button>
           <h1 className="truncate">{title}</h1>
           {badge}
+          {description && (
+            <span className="caption-style text-subtle hidden min-w-0 truncate xl:inline" title={description}>
+              {description}
+            </span>
+          )}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>

@@ -12,7 +12,7 @@ import { formatCompact, formatPercent } from "@/lib/client/format";
 import { formatDay } from "./format";
 import { DeltaText } from "./parts";
 
-const LABELS = ["Impressions · 7d", "Page views · 7d", "First-time downloads · 7d", "Conversion rate · 7d"];
+const LABELS = ["First-time downloads · 7d", "Impressions · 7d", "Page views · 7d", "Conversion rate · 7d"];
 
 function Tiles({ data, href }: { data: StoreSummary; href: string }) {
   if (data.state !== "ok")
@@ -25,13 +25,32 @@ function Tiles({ data, href }: { data: StoreSummary; href: string }) {
     );
   return (
     <>
-      <KpiTile label={LABELS[0]} value={formatCompact(data.impressions?.current)} hint="App icon impressions on the App Store (Apple)" delta={<PctDelta period={data.impressions} />} />
-      <KpiTile label={LABELS[1]} value={formatCompact(data.pageViews?.current)} hint="Product page views (Apple)" delta={<PctDelta period={data.pageViews} />} />
-      <KpiTile label={LABELS[2]} value={formatCompact(data.firstDownloads?.current)} hint="First-time downloads (Apple)" delta={<PctDelta period={data.firstDownloads} />} />
       <KpiTile
+        source="apple"
+        label={LABELS[0]}
+        value={formatCompact(data.firstDownloads?.current)}
+        hint="People who downloaded the app for the first time in the last 7 days of Apple data. The reference number for new installs."
+        delta={<PctDelta period={data.firstDownloads} />}
+      />
+      <KpiTile
+        source="apple"
+        label={LABELS[1]}
+        value={formatCompact(data.impressions?.current)}
+        hint="Times your app icon was shown on the App Store (search results, charts, Today, product page) in the last 7 days of Apple data."
+        delta={<PctDelta period={data.impressions} />}
+      />
+      <KpiTile
+        source="apple"
+        label={LABELS[2]}
+        value={formatCompact(data.pageViews?.current)}
+        hint="Times your product page was opened in the last 7 days of Apple data."
+        delta={<PctDelta period={data.pageViews} />}
+      />
+      <KpiTile
+        source="apple"
         label={LABELS[3]}
         value={formatPercent(data.conversion?.current ?? null, 2)}
-        hint="First-time downloads ÷ unique impressions"
+        hint="First-time downloads divided by unique impressions over the same 7 days: how many people who saw the app installed it."
         delta={<DeltaText period={data.conversion} suffix="vs prior 7d" points />}
       />
     </>
@@ -45,9 +64,13 @@ export default function StoreRow({ appId, onlyWithData = false }: { appId?: numb
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="eyebrow-style text-subtle">App Store · Apple Analytics</h2>
+        <h2 className="eyebrow-style text-subtle">App Store traffic · reported by Apple</h2>
         {data?.demo && <DemoTag title="Sample data imported from fixtures" />}
-        {data?.dataThrough && <span className="caption-style text-subtle">Data through {formatDay(data.dataThrough)}</span>}
+        {data?.dataThrough && (
+          <span className="caption-style text-subtle" title="Apple publishes analytics with a delay of one to three days">
+            Last 7 days of Apple data, through {formatDay(data.dataThrough)}
+          </span>
+        )}
         {appId && data?.state === "ok" && (
           <Link href={href} className="caption-style text-soft hover:text-foreground ml-auto inline-flex items-center gap-1 transition-colors duration-150">
             Details

@@ -27,14 +27,14 @@ function KpiRow() {
   const { data, error } = useApi<HomeKpis>("/api/dashboard/kpis");
   if (error && !data) return <WidgetError message={error.message} />;
   return (
-    <div className="grid grid-cols-2 gap-3 *:last:col-span-2 md:grid-cols-12 md:*:col-span-3 md:[&>*:nth-child(n+5)]:col-span-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-12 md:*:col-span-3 md:[&>*:nth-child(n+5)]:col-span-6">
       {data ? (
         <>
           <AsoTiles data={data} />
           <BusinessTiles data={data} />
         </>
       ) : (
-        <TileSkeletons count={7} />
+        <TileSkeletons count={6} />
       )}
     </div>
   );
@@ -91,8 +91,9 @@ export default function HomeView({ claude }: { claude: HomeClaude }) {
       />
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 p-4">
         {!claude.connected && <ClaudeConnectBanner claude={claude} />}
-        <KpiRow />
         <StoreRow onlyWithData />
+        <SectionTitle>Rankings, revenue and ads · all apps</SectionTitle>
+        <KpiRow />
         <PosthogRow />
         <SectionTitle>Apps</SectionTitle>
         <AppsGrid />

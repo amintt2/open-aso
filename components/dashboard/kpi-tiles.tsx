@@ -74,9 +74,10 @@ export function AsoTiles({ data }: { data: HomeKpis }) {
   return (
     <>
       <KpiTile
+        source="measured"
         label="Tracked keywords"
         value={formatCompact(data.trackedKeywords)}
-        hint="Keyword × country pairs across all apps"
+        hint="Keyword and country pairs Open ASO checks every day, across all your apps"
         delta={
           <Caption>
             {data.addedThisWeek
@@ -86,21 +87,24 @@ export function AsoTiles({ data }: { data: HomeKpis }) {
         }
       />
       <KpiTile
-        label="In top 10"
+        source="measured"
+        label="Keywords in top 10"
         value={data.top10 ? formatCompact(data.top10.current) : "—"}
-        hint="Relevant keywords ranking #1–10 today"
+        hint="Relevant tracked keywords where one of your apps ranks 1 to 10 in App Store search today"
         delta={<AbsDelta period={data.top10} />}
       />
       <KpiTile
-        label="Visibility score"
+        source="estimate"
+        label="Search visibility · 0–100"
         value={formatScore(data.visibility?.current)}
-        hint="Modelled search installs captured vs ranking #1 for every tracked keyword (0–100)"
+        hint="Share of the search installs you would get if you ranked #1 for every tracked keyword. 100 means #1 everywhere. Modeled from popularity and your ranks."
         delta={<AbsDelta period={data.visibility} digits={1} unit=" pts" />}
       />
       <KpiTile
-        label="Search installs / day"
+        source="estimate"
+        label="Est. search installs / day"
         value={data.searchInstalls ? approx(data.searchInstalls.current) : "—"}
-        hint="Estimate: popularity × tap share at your current rank, averaged over 7 days"
+        hint="Modeled installs per day from tracked keywords: popularity × the share of taps your rank usually gets, averaged over 7 days. Compare with Apple's first-time downloads for the real number."
         delta={
           data.searchInstalls ? (
             <PctDelta period={data.searchInstalls} />
@@ -116,29 +120,12 @@ export function AsoTiles({ data }: { data: HomeKpis }) {
 export function BusinessTiles({ data }: { data: HomeKpis }) {
   return (
     <>
-      {data.installs ? (
-        <KpiTile
-          label={`Installs · 7d (${data.installs.source === "posthog" ? "PostHog" : "SDK"})`}
-          value={formatCompact(data.installs.current)}
-          hint={
-            data.installs.source === "posthog"
-              ? "New users in PostHog across mapped apps"
-              : "Installs reported by the Open ASO SDK"
-          }
-          delta={<PctDelta period={data.installs} />}
-        />
-      ) : (
-        <ConnectTile
-          label="Installs · 7d"
-          hint="Connect PostHog or the SDK"
-          href="/integrations"
-        />
-      )}
       {data.revenue ? (
         <KpiTile
+          source="revenue"
           label="Net revenue · 7d"
           value={formatUsd(data.revenue.current)}
-          hint={`From ${data.revenue.providers.join(", ") || "webhooks"}`}
+          hint={`Revenue after refunds over the last 7 days, in USD, from ${data.revenue.providers.join(", ") || "webhooks"}`}
           delta={<PctDelta period={data.revenue} />}
         />
       ) : (
@@ -150,9 +137,10 @@ export function BusinessTiles({ data }: { data: HomeKpis }) {
       )}
       {data.ads ? (
         <KpiTile
-          label="Apple Ads · 7d"
+          source="ads"
+          label="Apple Ads spend · 7d"
           value={formatMoney(data.ads.spend.current, data.ads.currency)}
-          hint="Spend over the last 7 days"
+          hint="Apple Ads spend over the last 7 days. ROAS = revenue ÷ spend, CPA = spend ÷ installs."
           delta={
             <span className="caption-style text-subtle truncate">
               ROAS{" "}
@@ -186,12 +174,12 @@ export function PosthogTiles({ data }: { data: PosthogKpis }) {
     return (
       <>
         <ConnectTile
-          label="New users today"
+          label="First opens today"
           hint="Map this app in PostHog"
           href="/integrations"
         />
         <ConnectTile
-          label="New users · 7d"
+          label="First opens · 7d"
           hint="Map this app in PostHog"
           href="/integrations"
         />
@@ -201,7 +189,7 @@ export function PosthogTiles({ data }: { data: PosthogKpis }) {
           href="/integrations"
         />
         <ConnectTile
-          label="Onboarding → purchase"
+          label="New user → purchase"
           hint="Map this app in PostHog"
           href="/integrations"
         />
@@ -211,9 +199,10 @@ export function PosthogTiles({ data }: { data: PosthogKpis }) {
   return (
     <>
       <KpiTile
-        label="New users today"
+        source="posthog"
+        label="First opens today"
         value={formatCompact(data.newUsersToday)}
-        hint="PostHog first opens since midnight UTC"
+        hint="Devices that opened the app for the first time since midnight UTC. Includes test and App Review devices, so Apple's first-time downloads stay the reference."
         delta={
           <PctDelta
             period={{
@@ -225,21 +214,24 @@ export function PosthogTiles({ data }: { data: PosthogKpis }) {
         }
       />
       <KpiTile
-        label="New users · 7d"
+        source="posthog"
+        label="First opens · 7d"
         value={formatCompact(data.newUsers.current)}
-        hint="PostHog first opens over 7 days"
+        hint="Devices that opened the app for the first time in the last 7 days. Includes test and App Review devices, so Apple's first-time downloads stay the reference."
         delta={<PctDelta period={data.newUsers} />}
       />
       <KpiTile
+        source="posthog"
         label="Daily active users"
         value={formatCompact(data.dau)}
-        hint="Average distinct users per day over 7 days"
+        hint="Average number of distinct users who opened the app per day over the last 7 days"
         delta={<Caption>7-day average</Caption>}
       />
       <KpiTile
-        label="Onboarding → purchase"
+        source="posthog"
+        label="New user → purchase"
         value={formatPercent(f?.overall ?? null)}
-        hint="Share of new users who purchased within 7 days"
+        hint="Share of new users who made a purchase within 7 days of their first open"
         delta={
           <span className="caption-style text-subtle truncate">
             {f
@@ -259,7 +251,10 @@ export function PosthogRow({ appId }: { appId?: number }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="eyebrow-style text-subtle">Product · PostHog</h2>
+        <h2 className="eyebrow-style text-subtle">In the app · counted by PostHog</h2>
+        <span className="caption-style text-subtle">
+          Includes test and App Review devices
+        </span>
         {data?.mode === "demo" && <DemoTag title={data.notice} />}
         {data?.mode === "demo" && (
           <Link

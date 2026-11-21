@@ -23,19 +23,43 @@ import {
 
 export type NavItem = { slug: string; label: string; icon: LucideIcon };
 
-export const APP_NAV: NavItem[] = [
-  { slug: "", label: "Overview", icon: LayoutGrid },
-  { slug: "store-analytics", label: "App Store Analytics", icon: ChartColumnIncreasing },
-  { slug: "keywords", label: "Keywords", icon: KeyRound },
-  { slug: "impact", label: "Keyword Impact", icon: TrendingUp },
-  { slug: "trends", label: "Rankings & Trends", icon: LineChart },
-  { slug: "suggestions", label: "Suggestions", icon: Lightbulb },
-  { slug: "competitors", label: "Competitors", icon: Swords },
-  { slug: "opportunities", label: "Country Opportunities", icon: Globe2 },
-  { slug: "page", label: "App Store Page", icon: Smartphone },
-  { slug: "pricing", label: "Price Localization", icon: Tags },
-  { slug: "reviews", label: "Reviews", icon: MessageSquareText },
+export type NavGroup = { title?: string; items: NavItem[] };
+
+export const APP_NAV_GROUPS: NavGroup[] = [
+  { items: [{ slug: "", label: "Overview", icon: LayoutGrid }] },
+  {
+    title: "Keywords & rankings",
+    items: [
+      { slug: "keywords", label: "Keywords", icon: KeyRound },
+      { slug: "trends", label: "Rankings & Trends", icon: LineChart },
+      { slug: "suggestions", label: "Keyword Suggestions", icon: Lightbulb },
+    ],
+  },
+  {
+    title: "Traffic & downloads",
+    items: [
+      { slug: "store-analytics", label: "App Store Analytics", icon: ChartColumnIncreasing },
+      { slug: "impact", label: "Keyword Impact", icon: TrendingUp },
+    ],
+  },
+  {
+    title: "Market & competitors",
+    items: [
+      { slug: "competitors", label: "Competitors", icon: Swords },
+      { slug: "opportunities", label: "Country Opportunities", icon: Globe2 },
+    ],
+  },
+  {
+    title: "Store listing",
+    items: [
+      { slug: "page", label: "App Store Page", icon: Smartphone },
+      { slug: "pricing", label: "Price Localization", icon: Tags },
+      { slug: "reviews", label: "Reviews", icon: MessageSquareText },
+    ],
+  },
 ];
+
+export const APP_NAV: NavItem[] = APP_NAV_GROUPS.flatMap((g) => g.items);
 
 export const GLOBAL_NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },

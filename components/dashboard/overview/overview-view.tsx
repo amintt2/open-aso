@@ -13,6 +13,7 @@ import type { OverviewSummary } from "@/lib/dashboard/types";
 import type { TrendsResult } from "@/lib/trends/types";
 import { PosthogRow } from "../kpi-tiles";
 import MoversList from "../movers-list";
+import { SectionTitle } from "../parts";
 import { DownloadsMap, Experiments, LiveEvents } from "../posthog-widgets";
 import { Card, MoreLink, Skeleton, SkeletonRows, WidgetError } from "../widget";
 import {
@@ -125,10 +126,14 @@ export default function OverviewView() {
         {!summary && !error && (
           <Skeleton className="h-[90px] w-full rounded-xl" />
         )}
+        {app && <StoreRow appId={appId} />}
+        <SectionTitle>
+          Search rankings and revenue ·{" "}
+          {country === ALL_COUNTRIES ? "all countries" : country.toUpperCase()}
+        </SectionTitle>
         <OverviewKpis data={summary} />
         {app && (
           <>
-            <StoreRow appId={appId} />
             <PosthogRow appId={appId} />
             <TrendCharts appId={appId} country={country} />
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">

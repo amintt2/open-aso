@@ -17,7 +17,13 @@ import NavLink from "./nav-link";
 import UserMenu from "./user-menu";
 import WorkspaceSwitcher from "./workspace-switcher";
 import WorkerStatus from "@/components/worker/worker-status";
-import { APP_NAV, appHref, GLOBAL_NAV, isNavActive } from "@/lib/client/nav";
+import {
+  APP_NAV,
+  APP_NAV_GROUPS,
+  appHref,
+  GLOBAL_NAV,
+  isNavActive,
+} from "@/lib/client/nav";
 import { useApi } from "@/lib/client/api";
 import type { TrackedApp } from "@/lib/client/types";
 import type { Me } from "@/lib/workspace/types";
@@ -116,24 +122,34 @@ export default function SidebarContent() {
       <ScrollArea className="min-h-0 flex-1">
         <nav aria-label="Primary">
           {current && (
-            <SidebarSection
-              title="App"
-              className="border-sidebar-border border-b"
-            >
-              {APP_NAV.map((item) => (
-                <NavLink
-                  key={item.slug || "overview"}
-                  href={appHref(current.id, item.slug)}
-                  icon={item.icon}
-                  label={item.label}
-                  active={isNavActive(pathname, appHref(current.id, item.slug))}
-                  count={
-                    item.slug === "keywords" ? current.keywordCount : undefined
-                  }
-                  onNavigate={close}
-                />
+            <div className="border-sidebar-border border-b">
+              {APP_NAV_GROUPS.map((group, i) => (
+                <SidebarSection
+                  key={group.title ?? "overview"}
+                  title={group.title}
+                  className={i === 0 ? "pb-0" : i === APP_NAV_GROUPS.length - 1 ? "pt-2" : "pt-2 pb-0"}
+                >
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.slug || "overview"}
+                      href={appHref(current.id, item.slug)}
+                      icon={item.icon}
+                      label={item.label}
+                      active={isNavActive(
+                        pathname,
+                        appHref(current.id, item.slug),
+                      )}
+                      count={
+                        item.slug === "keywords"
+                          ? current.keywordCount
+                          : undefined
+                      }
+                      onNavigate={close}
+                    />
+                  ))}
+                </SidebarSection>
               ))}
-            </SidebarSection>
+            </div>
           )}
           <SidebarSection title="Workspace">
             {GLOBAL_NAV.map((item) => (

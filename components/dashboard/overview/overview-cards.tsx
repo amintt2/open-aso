@@ -47,67 +47,38 @@ function approx(n: number) {
 export function OverviewKpis({ data }: { data: OverviewSummary | undefined }) {
   if (!data)
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <TileSkeletons count={6} />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <TileSkeletons count={5} />
       </div>
     );
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       <KpiTile
-        label="Visibility score"
-        value={formatScore(data.visibility?.current)}
-        hint="Modelled share of the search installs you'd get ranking #1 everywhere"
-        delta={<AbsDelta period={data.visibility} digits={1} unit=" pts" />}
-      />
-      <KpiTile
-        label="Avg position"
-        value={
-          data.avgPosition ? `#${data.avgPosition.current.toFixed(1)}` : "—"
-        }
-        hint="Average rank of ranked keywords"
-        delta={<AbsDelta period={data.avgPosition} digits={1} invert />}
-      />
-      <KpiTile
-        label="Top 10 / Top 3"
+        source="measured"
+        label="Keywords in top 10 / top 3"
         value={
           data.top10
             ? `${data.top10.current} / ${data.top3?.current ?? 0}`
             : "—"
         }
-        hint="Keywords ranking #1–10 and #1–3"
+        hint="Tracked keywords where this app ranks 1 to 10, and 1 to 3, in App Store search today"
         delta={<AbsDelta period={data.top10} />}
       />
       <KpiTile
-        label="Search installs / day"
-        value={data.searchInstalls ? approx(data.searchInstalls.current) : "—"}
-        hint="Estimate from popularity × tap share at your rank, 7-day average"
-        delta={
-          data.searchInstalls ? (
-            <PctDelta period={data.searchInstalls} />
-          ) : (
-            <Caption>Estimate · needs rankings</Caption>
-          )
+        source="measured"
+        label="Average position"
+        value={
+          data.avgPosition ? `#${data.avgPosition.current.toFixed(1)}` : "—"
         }
+        hint="Average rank across the keywords where this app is in the top 200 today. Lower is better."
+        delta={<AbsDelta period={data.avgPosition} digits={1} invert />}
       />
-      {data.installs ? (
-        <KpiTile
-          label={`Installs · 7d (${data.installs.source === "posthog" ? "PostHog" : "SDK"})`}
-          value={formatCompact(data.installs.current)}
-          hint="Observed installs, all countries"
-          delta={<PctDelta period={data.installs} />}
-        />
-      ) : (
-        <ConnectTile
-          label="Installs · 7d"
-          hint="Connect PostHog or the SDK"
-          href="/integrations"
-        />
-      )}
       {data.revenue ? (
         <KpiTile
+          source="revenue"
           label="Net revenue · 7d"
           value={formatUsd(data.revenue.current)}
-          hint="RevenueCat / Superwall, all countries"
+          hint="Revenue after refunds over the last 7 days, in USD, all countries, from RevenueCat or Superwall"
           delta={<PctDelta period={data.revenue} />}
         />
       ) : (
@@ -117,6 +88,26 @@ export function OverviewKpis({ data }: { data: OverviewSummary | undefined }) {
           href="/integrations"
         />
       )}
+      <KpiTile
+        source="estimate"
+        label="Search visibility · 0–100"
+        value={formatScore(data.visibility?.current)}
+        hint="Share of the search installs you would get if you ranked #1 for every tracked keyword. 100 means #1 everywhere. Modeled from popularity and your ranks."
+        delta={<AbsDelta period={data.visibility} digits={1} unit=" pts" />}
+      />
+      <KpiTile
+        source="estimate"
+        label="Est. search installs / day"
+        value={data.searchInstalls ? approx(data.searchInstalls.current) : "—"}
+        hint="Modeled installs per day from tracked keywords: popularity × the share of taps your rank usually gets, averaged over 7 days. Apple's first-time downloads above are the real number."
+        delta={
+          data.searchInstalls ? (
+            <PctDelta period={data.searchInstalls} />
+          ) : (
+            <Caption>Needs rankings</Caption>
+          )
+        }
+      />
     </div>
   );
 }
@@ -157,8 +148,11 @@ export function TopKeywords({
                     <th className="py-1 font-normal">Position</th>
                     <th className="py-1 font-normal">Popularity</th>
                     <th className="py-1 font-normal">Relevance</th>
-                    <th className="py-1 pr-4 text-right font-normal">
-                      Installs/day
+                    <th
+                      className="py-1 pr-4 text-right font-normal"
+                      title="Modeled installs per day from this keyword at your current rank"
+                    >
+                      Est. installs/day
                     </th>
                   </tr>
                 </thead>
