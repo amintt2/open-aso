@@ -13,12 +13,14 @@ type Props = {
   keywords: TrackedKeyword[];
   onCancel: () => void;
   onConfirm: () => void;
+  note?: string;
 };
 
 export default function DeleteKeywordsDialog({
   keywords,
   onCancel,
   onConfirm,
+  note,
 }: Props) {
   const single = keywords.length === 1;
   return (
@@ -37,7 +39,7 @@ export default function DeleteKeywordsDialog({
             <DialogDescription className="text-subtle p-style">
               {single ? `“${keywords[0].term}”` : "These keywords"} and{" "}
               {single ? "its" : "their"} ranking history will be removed from
-              this app.
+              this app.{note ? ` ${note}` : ""}
             </DialogDescription>
           </div>
           <div className="flex justify-end gap-2">

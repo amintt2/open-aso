@@ -11,10 +11,11 @@ import { LabelTag, PositionBadge, ScoreBar } from "@/components/shell/score";
 import { COUNTRY_BY_CODE } from "@/lib/appstore/countries";
 import { formatCompact, timeAgo } from "@/lib/client/format";
 import type { TrackedKeyword } from "@/lib/client/types";
-import { isStale, parseDate, STALE_HOURS, type KeywordGroup } from "@/lib/keywords/table";
+import { inMetadata, isStale, parseDate, STALE_HOURS, type KeywordGroup } from "@/lib/keywords/table";
 import { cn } from "@/lib/utils";
 import { DropdownRowItems, RowContextMenu } from "./keyword-row-menu";
 import { STICKY_CELL, type RowHandlers } from "./keyword-row";
+import WhereCell from "./where-cell";
 
 export type GroupHandlers = RowHandlers & {
   onToggle: (term: string) => void;
@@ -65,6 +66,7 @@ function GroupRowBase({ group: g, expanded, selectedCount, refreshingCount, hand
   const checked = selectedCount === 0 ? false : selectedCount === g.ids.length ? true : "indeterminate";
   const names = g.countries.map(countryName);
   const best = g.bestPosition;
+  const covered = g.rows.filter(inMetadata).length;
 
   function onKeyDown(e: KeyboardEvent<HTMLTableRowElement>) {
     if (e.target !== e.currentTarget) return;
@@ -161,6 +163,14 @@ function GroupRowBase({ group: g, expanded, selectedCount, refreshingCount, hand
         )}
       </TableCell>
       <TableCell>
+        <span
+          className={cn("caption-style tabular-nums", covered ? "text-soft" : "text-faint")}
+          title={`In your indexed metadata in ${covered} of ${g.rows.length} ${g.rows.length === 1 ? "country" : "countries"}. Expand the row to see where.`}
+        >
+          {covered ? `${covered} of ${g.rows.length}` : "Not in metadata"}
+        </span>
+      </TableCell>
+      <TableCell>
         <span className="inline-flex items-center gap-1.5">
           <ScoreBar value={g.popularity} />
           <SourceBadge keyword={g.bestPopularity} />
@@ -187,7 +197,7 @@ function GroupRowBase({ group: g, expanded, selectedCount, refreshingCount, hand
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[210px]">
             <DropdownMenuItem onSelect={() => handlers.onRefresh(g.ids)} disabled={refreshingCount === g.ids.length}>
-              <RefreshCw aria-hidden className="size-3.5" /> Refresh all countries
+              <RefreshCw aria-hidden className="size-3.5" /> Update data in all countries
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => handlers.onCopy([g.term])}>
               <Copy aria-hidden className="size-3.5" /> Copy keyword
@@ -277,9 +287,12 @@ function SubRowBase({ keyword: k, selected, refreshing, handlers }: SubRowProps)
         </TableCell>
         <TableCell className="caption-style text-subtle">{k.country.toUpperCase()}</TableCell>
         <TableCell>
-          <RelevanceCell relevance={k.relevance} category={k.relevanceCategory} source={k.relevanceSource} languageMatch={k.languageMatch} coverage={k.coverage} />
+          <RelevanceCell relevance={k.relevance} category={k.relevanceCategory} source={k.relevanceSource} languageMatch={k.languageMatch} />
         </TableCell>
         <TableCell>{pending ? <span className="text-subtle">—</span> : <PositionBadge position={k.position} change={k.positionChange} />}</TableCell>
+        <TableCell>
+          <WhereCell keyword={k} />
+        </TableCell>
         <TableCell>
           <span className="inline-flex items-center gap-1.5">
             <ScoreBar value={k.popularity} />

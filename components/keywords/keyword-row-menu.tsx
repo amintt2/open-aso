@@ -75,7 +75,7 @@ function MenuItems({
         <Trophy aria-hidden className="size-3.5" /> Top apps
       </Item>
       <Item onSelect={() => handlers.onRefresh([k.id])} disabled={refreshing}>
-        <RefreshCw aria-hidden className="size-3.5" /> Refresh
+        <RefreshCw aria-hidden className="size-3.5" /> Update data
       </Item>
       <Item onSelect={() => handlers.onCopy([k.term])}>
         <Copy aria-hidden className="size-3.5" /> Copy keyword

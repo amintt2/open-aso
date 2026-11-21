@@ -14,6 +14,7 @@ const COLUMNS: Column[] = [
   { key: "countries", label: "Countries", title: "Storefronts where this keyword is tracked" },
   { key: "relevance", label: "Relevance", title: "Best relevance to your app across countries, judged by Jev or estimated from your listing" },
   { key: "position", label: "Best position", title: "Your best rank across countries (top 200)" },
+  { key: "coverage", label: "In metadata", title: "Number of countries where the keyword is fully in the metadata Apple indexes (title, subtitle, keyword field or category)" },
   { key: "popularity", label: "Popularity", title: "Highest popularity across countries, 5–100" },
   { key: "difficulty", label: "Difficulty", title: "Average difficulty across countries, 1–100" },
   { key: "label", label: "Targeting", title: "Most common targeting label" },

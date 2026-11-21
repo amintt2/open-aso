@@ -111,8 +111,8 @@ export default function KeywordToolbar({
                 : `${shown} of ${total} ${unit}`}
             </span>
           )}
-          <span className="hidden lg:inline">
-            Downloads and MRR are estimates
+          <span className="hidden xl:inline">
+            Popularity marked Est., downloads and MRR are modeled estimates
           </span>
         </div>
       )}
@@ -165,7 +165,7 @@ function BulkBar({
         onClick={onRefresh}
       >
         <RefreshCw aria-hidden className="size-3.5" />
-        Refresh
+        Update data
       </Button>
       <Button
         variant="secondary"

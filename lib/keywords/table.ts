@@ -25,6 +25,7 @@ export type SortKey =
   | "top5Downloads"
   | "top5Mrr"
   | "resultsCount"
+  | "coverage"
   | "lastRefreshedAt";
 
 export type Sort = { key: SortKey; dir: "asc" | "desc" };
@@ -36,7 +37,37 @@ export type Filters = {
   popularity: [number, number];
   difficulty: [number, number];
   hideUnrelated?: boolean;
+  topTenOnly?: boolean;
+  noiseOnly?: boolean;
+  where?: KeywordPlace[];
 };
+
+export type KeywordPlace = "title" | "subtitle" | "keywords" | "category" | "none";
+
+export const KEYWORD_PLACES: KeywordPlace[] = ["title", "subtitle", "keywords", "category", "none"];
+
+export const PLACE_LABEL: Record<KeywordPlace, string> = {
+  title: "Title",
+  subtitle: "Subtitle",
+  keywords: "Keyword field",
+  category: "Category name",
+  none: "Not in metadata",
+};
+
+export function placeOf(k: TrackedKeyword): KeywordPlace | null {
+  const c = k.coverage;
+  if (!c) return null;
+  return (c.match === "exact" || c.match === "words") && c.field ? c.field : "none";
+}
+
+export function inMetadata(k: TrackedKeyword) {
+  const place = placeOf(k);
+  return place != null && place !== "none";
+}
+
+export function isNoise(k: TrackedKeyword) {
+  return !k.liked && !k.notes && k.coverage != null && !inMetadata(k) && k.position == null && isUnrelated(k);
+}
 
 export const DEFAULT_FILTERS: Filters = {
   labels: [],
@@ -45,6 +76,9 @@ export const DEFAULT_FILTERS: Filters = {
   popularity: [0, 100],
   difficulty: [0, 100],
   hideUnrelated: false,
+  topTenOnly: false,
+  noiseOnly: false,
+  where: [],
 };
 
 export function isUnrelated(k: TrackedKeyword) {
@@ -61,6 +95,9 @@ export function activeFilterCount(f: Filters) {
     (f.likedOnly ? 1 : 0) +
     (f.rankedOnly ? 1 : 0) +
     (f.hideUnrelated ? 1 : 0) +
+    (f.topTenOnly ? 1 : 0) +
+    (f.noiseOnly ? 1 : 0) +
+    (f.where?.length ? 1 : 0) +
     (f.popularity[0] > 0 || f.popularity[1] < 100 ? 1 : 0) +
     (f.difficulty[0] > 0 || f.difficulty[1] < 100 ? 1 : 0)
   );
@@ -84,6 +121,9 @@ export function filterKeywords(
       (!f.likedOnly || k.liked) &&
       (!f.rankedOnly || k.position != null) &&
       (!f.hideUnrelated || !isUnrelated(k)) &&
+      (!f.topTenOnly || (k.position != null && k.position <= 10)) &&
+      (!f.noiseOnly || isNoise(k)) &&
+      (!f.where?.length || f.where.includes(placeOf(k) ?? "none")) &&
       inRange(k.popularity, f.popularity) &&
       inRange(k.difficulty, f.difficulty),
   );
@@ -94,6 +134,7 @@ function sortValue(k: TrackedKeyword, key: SortKey): string | number | null {
     return k.lastRefreshedAt ? parseDate(k.lastRefreshedAt) : null;
   if (key === "label")
     return k.label ? TARGETING_LABELS.indexOf(k.label) : null;
+  if (key === "coverage") return k.coverage?.score ?? null;
   return k[key];
 }
 
@@ -176,6 +217,8 @@ export function csvRows(list: TrackedKeyword[]) {
     "Downloads",
     "Position",
     "Top apps",
+    "Relevance",
+    "In metadata",
   ];
   return [
     header,
@@ -192,6 +235,8 @@ export function csvRows(list: TrackedKeyword[]) {
       k.downloadsEst ?? "",
       k.position ?? "",
       k.topApps.map((a) => a.name).join(" | "),
+      k.relevanceCategory ?? "",
+      placeOf(k) ? PLACE_LABEL[placeOf(k) as KeywordPlace] : "",
     ]),
   ];
 }
@@ -247,6 +292,7 @@ export type GroupSortKey =
   | "popularity"
   | "difficulty"
   | "label"
+  | "coverage"
   | "downloadsEst"
   | "lastRefreshedAt";
 
@@ -346,6 +392,7 @@ export function filterGroups(
 function groupValue(g: KeywordGroup, key: GroupSortKey): string | number | null {
   if (key === "term") return g.term;
   if (key === "countries") return g.countries.length;
+  if (key === "coverage") return g.rows.filter(inMetadata).length;
   if (key === "position") return g.bestPosition?.position ?? null;
   if (key === "label") return g.label ? TARGETING_LABELS.indexOf(g.label) : null;
   if (key === "lastRefreshedAt")
@@ -376,4 +423,38 @@ export function defaultGroupDir(key: GroupSortKey): GroupSort["dir"] {
     key === "label"
     ? "asc"
     : "desc";
+}
+
+export type CountrySummary = {
+  country: string;
+  total: number;
+  ranked: number;
+  topTen: number;
+  inMetadata: number;
+  noise: number;
+  stale: number;
+  ids: number[];
+};
+
+export function summarize(country: string, rows: TrackedKeyword[]): CountrySummary {
+  return {
+    country,
+    total: rows.length,
+    ranked: rows.filter((k) => k.position != null).length,
+    topTen: rows.filter((k) => k.position != null && k.position <= 10).length,
+    inMetadata: rows.filter(inMetadata).length,
+    noise: rows.filter(isNoise).length,
+    stale: rows.filter((k) => isStale(k)).length,
+    ids: rows.map((k) => k.id),
+  };
+}
+
+export function countrySummaries(list: TrackedKeyword[]) {
+  const map = new Map<string, TrackedKeyword[]>();
+  for (const k of list) {
+    const rows = map.get(k.country);
+    if (rows) rows.push(k);
+    else map.set(k.country, [k]);
+  }
+  return [...map].map(([country, rows]) => summarize(country, rows)).sort((a, b) => b.total - a.total);
 }

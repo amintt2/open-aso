@@ -14,6 +14,9 @@ import RangeSlider from "./range-slider";
 import {
   activeFilterCount,
   DEFAULT_FILTERS,
+  KEYWORD_PLACES,
+  PLACE_LABEL,
+  type KeywordPlace,
   TARGETING_LABELS,
   type Filters,
 } from "@/lib/keywords/table";
@@ -79,6 +82,15 @@ export default function KeywordFilters({
         : [...value.labels, label],
     });
 
+  const where = value.where ?? [];
+  const togglePlace = (place: KeywordPlace) =>
+    onChange({
+      ...value,
+      where: where.includes(place)
+        ? where.filter((p) => p !== place)
+        : [...where, place],
+    });
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -107,6 +119,24 @@ export default function KeywordFilters({
           >
             Reset
           </Button>
+        </div>
+        <div className="flex flex-col gap-2.5">
+          <span className="caption-style text-soft">
+            Where it is in your metadata
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {KEYWORD_PLACES.map((place) => (
+              <button
+                key={place}
+                type="button"
+                aria-pressed={where.includes(place)}
+                onClick={() => togglePlace(place)}
+                className="caption-style text-subtle border-border aria-pressed:border-line-strong aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-ring/60 h-[24px] cursor-pointer rounded-full border px-2 transition-colors duration-150 outline-none hover:text-soft focus-visible:ring-2"
+              >
+                {PLACE_LABEL[place]}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-col gap-2.5">
           <span className="caption-style text-soft">Targeting label</span>
@@ -139,6 +169,18 @@ export default function KeywordFilters({
             label="Ranked only (top 200)"
             checked={value.rankedOnly}
             onChange={(rankedOnly) => onChange({ ...value, rankedOnly })}
+          />
+          <ToggleRow
+            id="kw-filter-top10"
+            label="Top 10 only"
+            checked={value.topTenOnly ?? false}
+            onChange={(topTenOnly) => onChange({ ...value, topTenOnly })}
+          />
+          <ToggleRow
+            id="kw-filter-noise"
+            label="Noise only (safe to remove)"
+            checked={value.noiseOnly ?? false}
+            onChange={(noiseOnly) => onChange({ ...value, noiseOnly })}
           />
           <ToggleRow
             id="kw-filter-unrelated"

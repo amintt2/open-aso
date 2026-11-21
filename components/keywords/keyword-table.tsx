@@ -10,8 +10,8 @@ import {
   TableRow,
   TableCell,
 } from "@/components/_ui/table";
-import type { TrackedApp, TrackedKeyword } from "@/lib/client/types";
-import { metadataMatch, type Sort, type SortKey } from "@/lib/keywords/table";
+import type { TrackedKeyword } from "@/lib/client/types";
+import type { Sort, SortKey } from "@/lib/keywords/table";
 import { cn } from "@/lib/utils";
 import KeywordRow, { type RowHandlers } from "./keyword-row";
 
@@ -24,27 +24,40 @@ type Column = {
 
 const COLUMNS: Column[] = [
   {
+    key: "position",
+    label: "Position",
+    title: "Your rank in App Store search results for this keyword today (top 200), with the change since the previous check",
+  },
+  {
+    key: null,
+    label: "30d trend",
+    title: "Your position over the last 30 days. Higher on the chart is a better rank.",
+  },
+  {
+    key: "coverage",
+    label: "In metadata",
+    title: "Where the keyword is in the metadata Apple indexes for this storefront: title, subtitle, keyword field or category. The number is indexing strength, 0–100.",
+  },
+  {
     key: "relevance",
     label: "Relevance",
-    title: "How well the keyword fits your app, judged by Jev or estimated from your listing",
+    title: "How well the keyword fits your app, 0–100, judged by Jev or estimated from your listing",
   },
   {
     key: "popularity",
     label: "Popularity",
-    title: "Modeled search popularity, 5–100",
+    title: "How often people search this, 5–100. Apple = Apple Search Ads popularity, Est. = modeled from search suggestions.",
   },
   {
     key: "difficulty",
     label: "Difficulty",
-    title: "How hard it is to rank in the top 10, 1–100",
+    title: "How hard it is to reach the top 10, 1–100, from the strength of the apps ranking today (estimate)",
   },
-  { key: "label", label: "Targeting" },
   {
-    key: "position",
-    label: "Position",
-    title: "Your rank in search results (top 200)",
+    key: "label",
+    label: "Targeting",
+    title: "Summary of popularity versus difficulty: Sweet Spot and Quick Win are the easiest wins",
   },
-  { key: null, label: "30d trend" },
   {
     key: "downloadsEst",
     label: "Est. DL/mo",
@@ -70,11 +83,10 @@ const COLUMNS: Column[] = [
     title: "Number of apps returned for this search",
   },
   {
-    key: null,
-    label: "Meta",
-    title: "T = keyword in your title, S = in your subtitle",
+    key: "lastRefreshedAt",
+    label: "Updated",
+    title: "When this keyword's data was last checked. Orange means older than 20 hours.",
   },
-  { key: "lastRefreshedAt", label: "Updated" },
 ];
 
 const HEAD =
@@ -119,7 +131,6 @@ function SortHeader({
 }
 
 type TableProps = {
-  app: TrackedApp;
   rows: TrackedKeyword[];
   sort: Sort;
   onSort: (key: SortKey) => void;
@@ -131,7 +142,6 @@ type TableProps = {
 };
 
 export default function KeywordTable({
-  app,
   rows,
   sort,
   onSort,
@@ -148,7 +158,6 @@ export default function KeywordTable({
       : selectedVisible === rows.length
         ? true
         : "indeterminate";
-  const title = app.store.trackName ?? app.name;
   const termActive = sort.key === "term";
   const TermArrow = sort.dir === "asc" ? ArrowUp : ArrowDown;
 
@@ -201,8 +210,6 @@ export default function KeywordTable({
             selected={selected.has(k.id)}
             refreshing={refreshing.has(k.id)}
             sparkline={sparklines?.[k.id]}
-            inTitle={metadataMatch(title, k.term)}
-            inSubtitle={metadataMatch(app.subtitle, k.term)}
             handlers={handlers}
           />
         ))}

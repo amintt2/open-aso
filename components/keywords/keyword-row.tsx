@@ -15,9 +15,10 @@ import { RelevanceCell } from "@/components/shell/relevance";
 import { LabelTag, PositionBadge, ScoreBar } from "@/components/shell/score";
 import { formatCompact, formatUsd, timeAgo } from "@/lib/client/format";
 import type { TrackedKeyword } from "@/lib/client/types";
-import { isStale, type MetadataMatch } from "@/lib/keywords/table";
+import { isStale } from "@/lib/keywords/table";
 import { cn } from "@/lib/utils";
 import { DropdownRowItems, RowContextMenu } from "./keyword-row-menu";
+import WhereCell from "./where-cell";
 
 export type RowHandlers = {
   onSelect: (id: number, checked: boolean, shift: boolean) => void;
@@ -34,45 +35,10 @@ type RowProps = {
   selected: boolean;
   refreshing: boolean;
   sparkline: (number | null)[] | undefined;
-  inTitle: MetadataMatch;
-  inSubtitle: MetadataMatch;
   handlers: RowHandlers;
 };
 
 export const STICKY_CELL = "sticky z-10 bg-inherit";
-
-function MetaChip({
-  letter,
-  field,
-  match,
-}: {
-  letter: string;
-  field: string;
-  match: MetadataMatch;
-}) {
-  const label =
-    match === "full"
-      ? `In ${field}`
-      : match === "partial"
-        ? `Partly in ${field}`
-        : `Not in ${field}`;
-  return (
-    <span
-      title={label}
-      aria-label={label}
-      className={cn(
-        "caption-style inline-flex size-[18px] items-center justify-center rounded-[5px] border font-medium",
-        match === "full" &&
-          "border-(--tag-green-border) bg-(--tag-green-bg) text-(--tag-green-text)",
-        match === "partial" &&
-          "border-(--tag-yellow-border) bg-(--tag-yellow-bg) text-(--tag-yellow-text)",
-        !match && "text-faint border-border",
-      )}
-    >
-      {letter}
-    </span>
-  );
-}
 
 function isInteractive(target: EventTarget) {
   return (
@@ -88,8 +54,6 @@ function KeywordRow({
   selected,
   refreshing,
   sparkline,
-  inTitle,
-  inSubtitle,
   handlers,
 }: RowProps) {
   const pending = k.popularity == null;
@@ -169,12 +133,24 @@ function KeywordRow({
           </div>
         </TableCell>
         <TableCell>
+          {pending ? (
+            <span className="text-subtle">—</span>
+          ) : (
+            <PositionBadge position={k.position} change={k.positionChange} />
+          )}
+        </TableCell>
+        <TableCell>
+          <Sparkline values={sparkline ?? []} invert />
+        </TableCell>
+        <TableCell>
+          <WhereCell keyword={k} />
+        </TableCell>
+        <TableCell>
           <RelevanceCell
             relevance={k.relevance}
             category={k.relevanceCategory}
             source={k.relevanceSource}
             languageMatch={k.languageMatch}
-            coverage={k.coverage}
           />
         </TableCell>
         <TableCell>
@@ -202,16 +178,6 @@ function KeywordRow({
             <LabelTag label={k.label} />
           )}
         </TableCell>
-        <TableCell>
-          {pending ? (
-            <span className="text-subtle">—</span>
-          ) : (
-            <PositionBadge position={k.position} change={k.positionChange} />
-          )}
-        </TableCell>
-        <TableCell>
-          <Sparkline values={sparkline ?? []} invert />
-        </TableCell>
         <TableCell className="text-right tabular-nums">
           {formatCompact(k.downloadsEst)}
         </TableCell>
@@ -223,12 +189,6 @@ function KeywordRow({
         </TableCell>
         <TableCell className="text-right tabular-nums">
           {k.resultsCount ?? "—"}
-        </TableCell>
-        <TableCell>
-          <span className="inline-flex gap-1">
-            <MetaChip letter="T" field="title" match={inTitle} />
-            <MetaChip letter="S" field="subtitle" match={inSubtitle} />
-          </span>
         </TableCell>
         <TableCell
           className={cn(

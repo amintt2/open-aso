@@ -5,17 +5,25 @@ import {
   AlertTriangle,
   Download,
   KeyRound,
-  LineChart,
   Loader2,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   SearchX,
   Sparkles,
+  Trash2,
   Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/_ui/button";
 import CountBadge from "@/components/_ui/count-badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/_ui/dropdown-menu";
 import CountrySelect from "@/components/shell/country-select";
 import EmptyState from "@/components/shell/empty-state";
 import PageHeader from "@/components/shell/page-header";
@@ -26,6 +34,7 @@ import type { TrackedKeyword } from "@/lib/client/types";
 import type { PositionSeries } from "@/lib/keywords/history";
 import type { TrackedRelevanceResult } from "@/lib/relevance/tracked";
 import {
+  countrySummaries,
   DEFAULT_FILTERS,
   defaultDir,
   defaultGroupDir,
@@ -36,6 +45,7 @@ import {
   parseDate,
   sortGroups,
   sortKeywords,
+  summarize,
   type Filters,
   type GroupSort,
   type GroupSortKey,
@@ -45,13 +55,16 @@ import {
 } from "@/lib/keywords/table";
 import { slugify } from "@/lib/utils";
 import AddKeywordsSheet from "./add-keywords-sheet";
+import CleanupSheet from "./cleanup-sheet";
+import CountryOverview from "./country-overview";
 import DeleteKeywordsDialog from "./delete-keywords-dialog";
 import DetectBanner, { DetectSummary } from "./detect-banner";
-import DetectMenu from "./detect-menu";
+import FindMenu from "./find-menu";
 import type { GroupHandlers } from "./grouped-keyword-row";
 import GroupedKeywordTable from "./grouped-keyword-table";
 import KeywordDetailSheet from "./keyword-detail-sheet";
 import KeywordTable, { KeywordTableSkeleton } from "./keyword-table";
+import KeywordSummary from "./keyword-summary";
 import KeywordToolbar from "./keyword-toolbar";
 import MinCountriesFilter from "./min-countries-filter";
 import TopAppsSheet from "./top-apps-sheet";
@@ -60,6 +73,13 @@ import { useKeywordDetect } from "./use-keyword-detect";
 import { useRefreshQueue } from "./use-refresh-queue";
 
 type Panel = { type: "detail" | "top"; id: number } | null;
+type Layout = "keywords" | "countries";
+type Cleanup = { country: string | null } | null;
+
+const LAYOUTS: { value: Layout; label: string; title: string }[] = [
+  { value: "keywords", label: "By keyword", title: "One row per keyword, with every country it is tracked in" },
+  { value: "countries", label: "By country", title: "One row per country: tracked, ranked, in metadata and noise" },
+];
 
 const EMPTY = new Set<number>();
 const NO_GROUPS: KeywordGroup[] = [];
@@ -110,6 +130,10 @@ export default function KeywordsView() {
   const [addOpen, setAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<number[]>([]);
   const [scoringRelevance, setScoringRelevance] = useState(false);
+  const [layout, setLayout] = useState<Layout>("keywords");
+  const [cleanup, setCleanup] = useState<Cleanup>(null);
+  const [deleteNote, setDeleteNote] = useState<string | undefined>();
+  const autoScored = useRef(new Set<string>());
   const lastClicked = useRef<number | null>(null);
   const lastGroup = useRef<string | null>(null);
   const autoQueued = useRef(new Set<number>());
@@ -162,6 +186,12 @@ export default function KeywordsView() {
     [all],
   );
   const byId = useMemo(() => new Map(all.map((k) => [k.id, k])), [all]);
+  const summary = useMemo(() => summarize(country, all), [country, all]);
+  const countries = useMemo(
+    () => (allMode ? countrySummaries(all) : []),
+    [all, allMode],
+  );
+  const byCountry = allMode && layout === "countries";
 
   const scoringFrom = detect.multiWindow?.from ?? null;
   const scoringTo = detect.multiWindow?.to ?? null;
@@ -257,7 +287,10 @@ export default function KeywordsView() {
       onRefresh: (ids) => void enqueue(ids),
       onLike: (ids, liked) => void actions.setLiked(ids, liked),
       onCopy: (terms) => void actions.copy(terms),
-      onDelete: (ids) => setPendingDelete(ids),
+      onDelete: (ids) => {
+        setDeleteNote(undefined);
+        setPendingDelete(ids);
+      },
     }),
     [actions, enqueue, setSelected],
   );
@@ -278,31 +311,65 @@ export default function KeywordsView() {
     );
   }
 
-  function refreshAll() {
-    const stale = all.filter((k) => isStale(k)).map((k) => k.id);
-    enqueue(stale.length ? stale : all.map((k) => k.id));
+  const scoreRelevance = useCallback(
+    async (quiet: boolean) => {
+      if (!app) return;
+      setScoringRelevance(true);
+      try {
+        const res = await api<TrackedRelevanceResult>(
+          `/api/apps/${app.id}/keywords/relevance`,
+          { method: "POST", body: { country } },
+        );
+        await mutate();
+        if (!quiet && res.jevError)
+          toast.warning(
+            `Relevance was estimated from your listing for some keywords: ${res.jevError}`,
+          );
+      } catch (e) {
+        if (!quiet)
+          toast.error(
+            e instanceof Error ? e.message : "Could not score relevance",
+          );
+      } finally {
+        setScoringRelevance(false);
+      }
+    },
+    [app, country, mutate],
+  );
+
+  function updateData(everything: boolean) {
+    const ids = (everything ? all : all.filter((k) => isStale(k))).map(
+      (k) => k.id,
+    );
+    const unscored = all.some((k) => !k.relevanceAt);
+    if (ids.length) enqueue(ids);
+    if (everything || unscored) void scoreRelevance(false);
+    if (!ids.length && !everything && !unscored)
+      toast.success(
+        "Everything is up to date. Data is re-checked once it is older than 20 hours.",
+      );
   }
 
-  async function scoreRelevance() {
-    if (!app) return;
-    setScoringRelevance(true);
-    try {
-      const res = await api<TrackedRelevanceResult>(
-        `/api/apps/${app.id}/keywords/relevance`,
-        { method: "POST", body: { country } },
-      );
-      await mutate();
-      const how = res.judged ? "judged by Jev" : "estimated from your listing";
-      toast.success(
-        `Scored relevance for ${res.scored} ${res.scored === 1 ? "keyword" : "keywords"}, ${how}`,
-      );
-      if (res.jevError)
-        toast.warning(`Jev was unavailable for some keywords: ${res.jevError}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not score relevance");
-    } finally {
-      setScoringRelevance(false);
-    }
+  const hasUnscored = all.some((k) => !k.relevanceAt && k.lastRefreshedAt);
+  useEffect(() => {
+    if (allMode || busy || scoringRelevance || !hasUnscored) return;
+    if (autoScored.current.has(country)) return;
+    autoScored.current.add(country);
+    void scoreRelevance(true);
+  }, [allMode, busy, scoringRelevance, hasUnscored, country, scoreRelevance]);
+
+  function removeAll(ids: number[], name: string) {
+    setDeleteNote(
+      `This removes every keyword tracked in ${name}, including liked ones and ones with notes.`,
+    );
+    setPendingDelete(ids);
+  }
+
+  function onCleaned(ids: number[]) {
+    const gone = new Set(ids);
+    setSelected(new Set([...selected].filter((id) => !gone.has(id))));
+    if (panel && gone.has(panel.id)) setPanel(null);
+    reloadKeywords();
   }
 
   function exportName(suffix = "") {
@@ -341,7 +408,8 @@ export default function KeywordsView() {
     ? new Set([app.primaryCountry, ...app.countries]).size
     : 1;
   const shownCount = allMode ? visibleGroups.length : visible.length;
-  const unscored = all.filter((k) => !k.relevanceAt).length;
+  const staleCount = summary.stale;
+  const updating = busy || scoringRelevance;
 
   if (appError)
     return (
@@ -383,63 +451,7 @@ export default function KeywordsView() {
               allOption={{ value: ALL_COUNTRIES, label: "All countries" }}
               className="max-w-[170px] min-w-[120px] sm:min-w-[150px]"
             />
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-[30px]"
-              href={`/apps/${appId}/trends`}
-              aria-label="Rankings & Trends"
-              title="Rankings & Trends for this country"
-            >
-              <LineChart aria-hidden className="size-3.5" />
-              <span className="hidden md:inline">Trends</span>
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              aria-label="Refresh stale keywords"
-              title="Refresh keywords older than 20 hours"
-              onClick={refreshAll}
-              disabled={!all.length}
-            >
-              <RefreshCw
-                aria-hidden
-                className={busy ? "size-3.5 animate-spin" : "size-3.5"}
-              />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              aria-label="Export CSV"
-              title="Export visible keywords as CSV"
-              onClick={() => actions.exportCsv(visibleRows, exportName())}
-              disabled={!visibleRows.length}
-            >
-              <Download aria-hidden className="size-3.5" />
-            </Button>
-            <Button
-              variant="secondary"
-              size={unscored > 0 ? "sm" : "icon"}
-              className={unscored > 0 ? "h-[30px]" : undefined}
-              onClick={() => void scoreRelevance()}
-              disabled={scoringRelevance || !all.length}
-              aria-label={unscored > 0 ? "Score relevance" : "Re-score relevance"}
-              title={
-                unscored > 0
-                  ? `Judge how well ${unscored} unscored ${unscored === 1 ? "keyword fits" : "keywords fit"} your app`
-                  : "Re-score how well these keywords fit your app"
-              }
-            >
-              {scoringRelevance ? (
-                <Loader2 aria-hidden className="size-3.5 animate-spin" />
-              ) : (
-                <Sparkles aria-hidden className="size-3.5" />
-              )}
-              {unscored > 0 && (
-                <span className="hidden md:inline">Score relevance</span>
-              )}
-            </Button>
-            <DetectMenu
+            <FindMenu
               country={allMode ? homeCountry : country}
               trackedCount={trackedCount}
               running={detect.running}
@@ -447,16 +459,93 @@ export default function KeywordsView() {
               onDetect={(scope) => void detect.start(scope)}
             />
             <Button
+              variant="secondary"
+              size="sm"
+              className="h-[30px] px-3"
+              onClick={() => updateData(false)}
+              disabled={!all.length || updating}
+              aria-label="Update data"
+              title={
+                staleCount
+                  ? `Re-check popularity, difficulty, rank and relevance for the ${staleCount} keywords older than 20 hours`
+                  : "Popularity, difficulty, rank and relevance are all less than 20 hours old"
+              }
+            >
+              <RefreshCw
+                aria-hidden
+                className={updating ? "size-3.5 animate-spin" : "size-3.5"}
+              />
+              <span className="hidden md:inline">Update data</span>
+              {staleCount > 0 && !updating && (
+                <CountBadge>{staleCount}</CountBadge>
+              )}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-[30px] px-3"
+              onClick={() => setCleanup({ country: allMode ? null : country })}
+              disabled={!all.length}
+              aria-label="Clean up"
+              title="Preview and remove noise: keywords that are not in your metadata, not ranked, and unrelated, another brand or in the wrong script"
+            >
+              <Sparkles aria-hidden className="size-3.5" />
+              <span className="hidden md:inline">Clean up</span>
+              {summary.noise > 0 && <CountBadge>{summary.noise}</CountBadge>}
+            </Button>
+            <Button
               variant="primary"
               size="sm"
               className="h-[30px] px-3"
               onClick={() => setAddOpen(true)}
               disabled={!app}
               aria-label="Add keywords"
+              title="Type or paste the search terms you want to track"
             >
               <Plus aria-hidden className="size-3.5" />
-              <span className="hidden sm:inline">Add keywords</span>
+              <span className="hidden sm:inline">Add</span>
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="More keyword actions"
+                  disabled={!app}
+                >
+                  <MoreHorizontal aria-hidden className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[250px]">
+                <DropdownMenuItem
+                  onSelect={() => actions.exportCsv(visibleRows, exportName())}
+                  disabled={!visibleRows.length}
+                >
+                  <Download aria-hidden className="size-3.5" /> Export visible
+                  keywords as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => updateData(true)}
+                  disabled={!all.length || updating}
+                >
+                  <RefreshCw aria-hidden className="size-3.5" /> Update all{" "}
+                  {all.length} now, even recent ones
+                </DropdownMenuItem>
+                {!allMode && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => removeAll(summary.ids, countryName)}
+                      disabled={!all.length}
+                      className="text-danger"
+                    >
+                      <Trash2 aria-hidden className="size-3.5" /> Remove all
+                      keywords in {countryName}…
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       >
@@ -487,6 +576,22 @@ export default function KeywordsView() {
         />
       )}
 
+      {app && keywords && all.length > 0 && (
+        <KeywordSummary
+          summary={summary}
+          scope={
+            allMode
+              ? `${countryCount} ${countryCount === 1 ? "country" : "countries"}`
+              : countryName
+          }
+          filters={filters}
+          onFilters={(f) => {
+            setFilters(f);
+            setLayout("keywords");
+          }}
+        />
+      )}
+
       <KeywordToolbar
         query={query}
         onQuery={setQuery}
@@ -494,15 +599,38 @@ export default function KeywordsView() {
         onFilters={setFilters}
         extraFilters={
           allMode && (
-            <MinCountriesFilter
-              value={minCountries}
-              max={countryCount}
-              onChange={setMinCountries}
-            />
+            <>
+              <MinCountriesFilter
+                value={minCountries}
+                max={countryCount}
+                onChange={setMinCountries}
+              />
+              <div
+                role="group"
+                aria-label="Layout"
+                className="border-line-strong flex h-[30px] items-center rounded-full border p-0.5"
+              >
+                {LAYOUTS.map((l) => (
+                  <button
+                    key={l.value}
+                    type="button"
+                    title={l.title}
+                    aria-pressed={layout === l.value}
+                    onClick={() => setLayout(l.value)}
+                    className="caption-style text-subtle aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-ring/60 h-full cursor-pointer rounded-full px-2.5 transition-colors duration-150 outline-none hover:text-soft focus-visible:ring-2"
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </>
           )
         }
-        shown={shownCount}
-        total={allMode ? groups.length : all.length}
+        shown={byCountry ? countries.length : shownCount}
+        total={
+          byCountry ? countries.length : allMode ? groups.length : all.length
+        }
+        unit={byCountry ? "countries" : "keywords"}
         progress={busy ? progress : null}
         selected={selectedRows}
         onClearSelection={() => setSelected(EMPTY)}
@@ -519,7 +647,10 @@ export default function KeywordsView() {
         onExport={() =>
           actions.exportCsv(selectedRows, exportName("-selected"))
         }
-        onDelete={() => setPendingDelete(selectedRows.map((k) => k.id))}
+        onDelete={() => {
+          setDeleteNote(undefined);
+          setPendingDelete(selectedRows.map((k) => k.id));
+        }}
       />
 
       <div className="min-h-0 flex-1 overflow-auto">
@@ -546,7 +677,7 @@ export default function KeywordsView() {
           <EmptyState
             icon={KeyRound}
             title={`No keywords tracked in ${countryName}`}
-            description="Detect the keywords this app already ranks for, or add the search terms you want to rank for. Each one is scored for popularity and difficulty, and your position is tracked daily."
+            description="Find keywords scans your metadata and the App Store for the terms this app is already indexed or ranked for. You can also add your own. Each keyword gets a popularity, a difficulty and a daily position."
             action={
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button
@@ -560,7 +691,7 @@ export default function KeywordsView() {
                   ) : (
                     <Wand2 aria-hidden className="size-3.5" />
                   )}
-                  {detect.running ? "Detecting…" : "Detect my keywords"}
+                  {detect.running ? "Finding…" : "Find my keywords"}
                 </Button>
                 <Button
                   variant="secondary"
@@ -572,6 +703,20 @@ export default function KeywordsView() {
                 </Button>
               </div>
             }
+          />
+        ) : byCountry ? (
+          <CountryOverview
+            rows={countries}
+            onOpen={setCountry}
+            onUpdate={(ids) => void enqueue(ids)}
+            onCleanUp={(c) => setCleanup({ country: c })}
+            onRemoveAll={(ids) => {
+              const code = byId.get(ids[0])?.country ?? "";
+              removeAll(
+                ids,
+                COUNTRY_BY_CODE.get(code)?.name ?? code.toUpperCase(),
+              );
+            }}
           />
         ) : !shownCount ? (
           <EmptyState
@@ -603,7 +748,6 @@ export default function KeywordsView() {
           />
         ) : (
           <KeywordTable
-            app={app}
             rows={visible}
             sort={sort}
             onSort={onSort}
@@ -651,6 +795,13 @@ export default function KeywordsView() {
             onTopApps={handlers.onTopApps}
             onNotesSaved={onNotesSaved}
           />
+          <CleanupSheet
+            appId={appId}
+            country={cleanup?.country ?? null}
+            open={cleanup != null}
+            onOpenChange={(open) => !open && setCleanup(null)}
+            onRemoved={onCleaned}
+          />
           <TopAppsSheet
             app={app}
             keyword={panel?.type === "top" ? byId.get(panel.id) : undefined}
@@ -665,6 +816,7 @@ export default function KeywordsView() {
           .filter((k): k is TrackedKeyword => !!k)}
         onCancel={() => setPendingDelete([])}
         onConfirm={() => void confirmDelete()}
+        note={deleteNote}
       />
     </>
   );
