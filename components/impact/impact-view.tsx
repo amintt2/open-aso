@@ -37,9 +37,10 @@ function Tiles({ data }: { data: ImpactResult }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       <KpiTile
-        label="Observed installs"
+        source={data.demo ? undefined : data.dataSources.observed === "apple" ? "apple" : data.dataSources.observed === "posthog" ? "posthog" : data.dataSources.observed === "sdk" ? "sdk" : undefined}
+        label={`Observed installs · ${data.days}d`}
         value={t.observed == null ? "—" : formatCompact(t.observed)}
-        hint="New users in the tracked countries over the window"
+        hint="Real installs in the tracked countries over the selected period, from the best source connected: Apple first-time downloads, else PostHog first opens, else the SDK"
         delta={
           <Caption>
             {t.observed == null
@@ -51,25 +52,28 @@ function Tiles({ data }: { data: ImpactResult }) {
       <KpiTile
         label="Organic share"
         value={formatPercent(organicShare, 0)}
-        hint="Observed installs minus Apple Ads installs"
+        hint="Share of observed installs that did not come from Apple Ads: (observed − Apple Ads installs) ÷ observed"
         delta={<Caption>{t.paid > 0 ? `${formatCompact(t.paid)} paid installs` : "No Apple Ads installs"}</Caption>}
       />
       <KpiTile
-        label="From keywords (est.)"
+        source="estimate"
+        label="Installs from tracked keywords"
         value={approx(t.explained, formatEstimate)}
-        hint="Modelled installs from your tracked keywords"
+        hint="Modeled installs your tracked keywords brought over the period, from popularity and your rank, scaled to observed search installs when available"
         delta={<Caption>{explainedShare != null ? `${formatPercent(explainedShare, 0)} of search installs` : "Uncalibrated estimate"}</Caption>}
       />
       <KpiTile
-        label="Unexplained search"
+        source="estimate"
+        label="Search installs not explained"
         value={approx(t.unexplained, formatEstimate)}
-        hint="Search installs your tracked keywords can't account for"
+        hint="Search installs that your tracked keywords cannot account for: searches you do not track yet. A high number means there are keywords to find."
         delta={<Caption>{t.unexplained == null ? "Needs install data" : "Other searches / untracked keywords"}</Caption>}
       />
       <KpiTile
-        label="Keyword revenue (est.)"
+        source="estimate"
+        label="Revenue from tracked keywords"
         value={approx(t.keywordRevenue, formatEstimateUsd)}
-        hint="Modelled installs × net revenue per new user"
+        hint="Modeled installs from tracked keywords × your net revenue per new user over the period, in USD"
         delta={<Caption>{t.keywordRevenue == null ? "Connect RevenueCat or Superwall" : t.revenue != null ? `of ${formatEstimateUsd(t.revenue)} net revenue` : "Modelled estimate"}</Caption>}
       />
     </div>
@@ -129,6 +133,7 @@ export default function ImpactView() {
     <>
       <PageHeader
         title="Keyword Impact"
+        description="Which keywords bring installs and revenue? Modeled, calibrated on real installs when connected."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <CountrySelect value={country} onChange={setCountry} only={countries} allOption={{ value: ALL_COUNTRIES, label: "All countries" }} />

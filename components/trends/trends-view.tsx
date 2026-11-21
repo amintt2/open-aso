@@ -156,6 +156,7 @@ export default function TrendsView() {
     <>
       <PageHeader
         title="Rankings & Trends"
+        description="Are my rankings going up or down, and which keywords moved?"
         actions={
           <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
             <CountrySelect value={country} onChange={setCountry} only={countries} allOption={{ value: ALL_COUNTRIES, label: "All countries" }} />

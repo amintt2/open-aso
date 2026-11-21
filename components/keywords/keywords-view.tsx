@@ -444,6 +444,7 @@ export default function KeywordsView() {
     <>
       <PageHeader
         title="Keywords"
+        description="Which searches do I track, where do I rank, and is each one in my metadata?"
         badge={
           keywords &&
           (allMode ? (

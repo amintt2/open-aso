@@ -123,6 +123,7 @@ export default function StoreAnalyticsView() {
     <>
       <PageHeader
         title="App Store Analytics"
+        description="How many people saw, opened and downloaded the app, and where they came from. Reported by Apple."
         actions={
           <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 lg:max-w-none">
             {data?.status === "ok" && territories.length > 0 && <CountrySelect value={country} onChange={setCountry} only={territories} allOption={{ value: "all", label: "All territories" }} />}

@@ -58,6 +58,7 @@ export default function CompetitorsPage() {
     <>
       <PageHeader
         title="Competitors"
+        description="How do rival apps compare, and where do they outrank me?"
         badge={data && <CountBadge>{data.length}</CountBadge>}
         actions={
           <>
@@ -94,8 +95,8 @@ export default function CompetitorsPage() {
                     <SortHead label="App" sortKey="name" sort={sort} onSort={setSort} initial="asc" className="min-w-[240px]" />
                     <SortHead label="Rating" sortKey="rating" sort={sort} onSort={setSort} />
                     <SortHead label="Ratings" sortKey="ratingCount" sort={sort} onSort={setSort} />
-                    <SortHead label="Downloads / mo" sortKey="downloadsEst" sort={sort} onSort={setSort} />
-                    <SortHead label="Revenue / mo" sortKey="revenueEst" sort={sort} onSort={setSort} />
+                    <SortHead label="Est. downloads / mo" sortKey="downloadsEst" sort={sort} onSort={setSort} />
+                    <SortHead label="Est. revenue / mo" sortKey="revenueEst" sort={sort} onSort={setSort} />
                     <SortHead label="Last update" sortKey="updatedAt" sort={sort} onSort={setSort} className="hidden md:table-cell" />
                     <SortHead label="Outranks you" sortKey="outranksMe" sort={sort} onSort={setSort} />
                     <TableHead className="w-12">

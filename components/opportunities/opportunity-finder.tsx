@@ -141,7 +141,7 @@ export default function OpportunityFinder() {
 
   return (
     <>
-      <PageHeader title="Country Opportunities" />
+      <PageHeader title="Country Opportunities" description="In which countries is a keyword easiest to win?" />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-4 p-4">
           <form onSubmit={startScan} className="bg-card border-border flex flex-col gap-3 rounded-xl border p-4">
@@ -223,7 +223,7 @@ export default function OpportunityFinder() {
                 <EmptyState
                   icon={Globe2}
                   title="Find where a keyword is easiest to win"
-                  description="Pick a keyword and the storefronts to compare. We score popularity, difficulty and your ranking in each one so you can expand into the markets with the best odds."
+                  description="Type a keyword above (or pick one you track), choose the storefronts and press Scan. Each country gets a popularity, a difficulty and your current rank, so you can localize for the markets with the best odds."
                 />
               </div>
             )

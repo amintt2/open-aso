@@ -40,14 +40,16 @@ export default function TrendsKpis({ start, end }: { start: TrendKpis | null; en
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       <KpiTile
-        label="Visibility score"
-        hint="Estimated search installs as a share of what you'd get ranking #1 for every keyword (0–100)"
+        source="estimate"
+        label="Search visibility · 0–100"
+        hint="Share of the search installs you would get if you ranked #1 for every tracked keyword. 100 means #1 everywhere. Modeled from popularity and your ranks."
         value={end?.visibility == null ? "—" : end.visibility.toFixed(1)}
         delta={<DeltaLine since={since} change={points(diff(end?.visibility, start?.visibility, 1), "pts", 1)} />}
       />
       <KpiTile
-        label="Est. installs/day"
-        hint="Modelled daily installs from search: searches per day × tap share at your position × 40% install rate"
+        source="estimate"
+        label="Est. search installs / day"
+        hint="Modeled daily installs from tracked keywords: searches per day × the share of taps your position usually gets × a 40% install rate"
         value={end ? `~${formatInstalls(end.installs)}` : "—"}
         delta={
           <DeltaLine
@@ -61,20 +63,23 @@ export default function TrendsKpis({ start, end }: { start: TrendKpis | null; en
         }
       />
       <KpiTile
-        label="Avg. position"
-        hint="Average position of keywords ranked in the top 200"
+        source="measured"
+        label="Average position"
+        hint="Average rank across the keywords where you are in the top 200 on the last day of the period. Lower is better."
         value={end?.avgPosition == null ? "—" : `#${end.avgPosition.toFixed(1)}`}
         delta={<DeltaLine since={since} change={{ value: avgChange, good: avgChange == null ? null : avgChange < 0, text: `${Math.abs(avgChange ?? 0).toFixed(1)} pos.` }} />}
       />
       <KpiTile
-        label="In top 10"
-        hint="Keywords ranked #1–#10"
+        source="measured"
+        label="Keywords in top 10"
+        hint="Tracked keywords ranked 1 to 10 on the last day of the period, out of all tracked keywords"
         value={end ? `${end.top10}${end.tracked ? ` / ${end.tracked}` : ""}` : "—"}
         delta={<DeltaLine since={since} change={points(diff(end?.top10, start?.top10), "")} />}
       />
       <KpiTile
-        label="In top 3"
-        hint="Keywords ranked #1–#3"
+        source="measured"
+        label="Keywords in top 3"
+        hint="Tracked keywords ranked 1 to 3 on the last day of the period"
         value={end ? String(end.top3) : "—"}
         delta={<DeltaLine since={since} change={points(diff(end?.top3, start?.top3), "")} />}
       />

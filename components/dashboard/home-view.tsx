@@ -69,6 +69,7 @@ export default function HomeView({ claude }: { claude: HomeClaude }) {
     <>
       <PageHeader
         title="Dashboard"
+        description="All apps at a glance. Numbers tagged Apple are reported, Estimate are modeled."
         actions={
           <>
             <Button

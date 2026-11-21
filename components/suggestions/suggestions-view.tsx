@@ -120,7 +120,7 @@ export default function SuggestionsView() {
 
   return (
     <>
-      <PageHeader title="Suggestions" actions={actions} />
+      <PageHeader title="Keyword Suggestions" description="Which keywords am I missing, and what should I change in my title and subtitle?" actions={actions} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-4 p-4">
           {app && <InsightsPanel key={`${app.id}:${country}`} app={app} country={country} />}

@@ -106,6 +106,7 @@ export default function OverviewView() {
     <>
       <PageHeader
         title="Overview"
+        description="How is this app doing: real App Store traffic first, then rankings, then estimates."
         actions={
           app && (
             <CountrySelect
