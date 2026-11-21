@@ -57,8 +57,8 @@ function toApp(row: AppRow & { keyword_count?: number; countries?: string | null
   };
 }
 
-const SELECT = `SELECT a.*, (SELECT count(*) FROM keywords k WHERE k.app_id = a.id) AS keyword_count,
-  (SELECT string_agg(DISTINCT k.country, ',') FROM keywords k WHERE k.app_id = a.id) AS countries FROM apps a`;
+const SELECT = `SELECT a.*, (SELECT count(*) FROM keywords k WHERE k.app_id = a.id AND k.archived_at IS NULL) AS keyword_count,
+  (SELECT string_agg(DISTINCT k.country, ',') FROM keywords k WHERE k.app_id = a.id AND k.archived_at IS NULL) AS countries FROM apps a`;
 
 export async function listApps(workspaceId: string): Promise<TrackedApp[]> {
   return (await db.all<AppRow>(`${SELECT} WHERE a.workspace_id = ? ORDER BY a.created_at ASC`, [workspaceId])).map(toApp);

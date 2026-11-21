@@ -23,7 +23,7 @@ export const GET = route(async () => {
     db.get<{ total: number; lastRefreshedAt: string | null; stale: number }>(
       `SELECT COUNT(*) AS total, MAX(k.last_refreshed_at) AS "lastRefreshedAt",
               COUNT(*) FILTER (WHERE k.last_refreshed_at IS NULL OR k.last_refreshed_at < now() - interval '20 hours') AS stale
-       FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ?`,
+       FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ? AND k.archived_at IS NULL`,
       [workspaceId],
     ),
   ]);

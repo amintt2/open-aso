@@ -36,7 +36,7 @@ export async function workspaceLimits(workspaceId: string) {
 export async function workspaceUsage(workspaceId: string) {
   const row = await db.get<{ apps: number; keywords: number; competitors: number }>(
     `SELECT (SELECT count(*) FROM apps WHERE workspace_id = ?) AS apps,
-            (SELECT count(*) FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ?) AS keywords,
+            (SELECT count(*) FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ? AND k.archived_at IS NULL) AS keywords,
             (SELECT count(*) FROM competitors c JOIN apps a ON a.id = c.app_id WHERE a.workspace_id = ?) AS competitors`,
     [workspaceId, workspaceId, workspaceId],
   );

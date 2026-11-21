@@ -41,7 +41,7 @@ async function loadTrends(
   const today = (await db.get<{ today: string }>("SELECT current_date AS today"))?.today ?? new Date().toISOString().slice(0, 10);
   const dates = windowDates(today, days);
   const from = dates[0];
-  const where = ["a.workspace_id = ?", "k.app_id = ?"];
+  const where = ["a.workspace_id = ?", "k.app_id = ?", "k.archived_at IS NULL"];
   const params: unknown[] = [workspaceId, appId];
   if (country !== "all") {
     where.push("k.country = ?");

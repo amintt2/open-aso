@@ -162,7 +162,7 @@ export function getHomeKpis(workspaceId: string): Promise<HomeKpis> {
       db.get<{ apps: number; total: number; added: number }>(
         `SELECT (SELECT count(*) FROM apps WHERE workspace_id = ?) AS apps, count(k.id) AS total,
                 count(k.id) FILTER (WHERE k.created_at >= now() - interval '7 days') AS added
-         FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ?`,
+         FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ? AND k.archived_at IS NULL`,
         [workspaceId, workspaceId],
       ),
       workspaceTrends(workspaceId),
@@ -192,7 +192,7 @@ export function getHomeKpis(workspaceId: string): Promise<HomeKpis> {
 
 async function keywordFacts(workspaceId: string) {
   return db.all<KeywordFacts>(
-    `SELECT k.app_id, k.term, k.country, k.relevance_category, k.last_refreshed_at FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ?`,
+    `SELECT k.app_id, k.term, k.country, k.relevance_category, k.last_refreshed_at FROM keywords k JOIN apps a ON a.id = k.app_id WHERE a.workspace_id = ? AND k.archived_at IS NULL`,
     [workspaceId],
   );
 }
