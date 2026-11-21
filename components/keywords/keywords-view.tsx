@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Download,
+  Archive,
   KeyRound,
   Loader2,
   MoreHorizontal,
@@ -11,7 +12,6 @@ import {
   RefreshCw,
   SearchX,
   Sparkles,
-  Trash2,
   Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -55,6 +55,8 @@ import {
 } from "@/lib/keywords/table";
 import { slugify } from "@/lib/utils";
 import AddKeywordsSheet from "./add-keywords-sheet";
+import type { ArchivableKeyword } from "./archive-types";
+import ArchivedView from "./archived-view";
 import CleanupSheet from "./cleanup-sheet";
 import CountryOverview from "./country-overview";
 import DeleteKeywordsDialog from "./delete-keywords-dialog";
@@ -78,7 +80,7 @@ type Cleanup = { country: string | null } | null;
 
 const LAYOUTS: { value: Layout; label: string; title: string }[] = [
   { value: "keywords", label: "By keyword", title: "One row per keyword, with every country it is tracked in" },
-  { value: "countries", label: "By country", title: "One row per country: tracked, ranked, in metadata and noise" },
+  { value: "countries", label: "By country", title: "One row per country: tracked, ranked, in metadata and unused" },
 ];
 
 const EMPTY = new Set<number>();
@@ -110,6 +112,19 @@ export default function KeywordsView() {
       ? `/api/keywords/history?appId=${appId}&country=${country}&days=30`
       : null,
   );
+
+  const { data: archivedList, mutate: mutateArchived } = useApi<
+    ArchivableKeyword[]
+  >(
+    app
+      ? `/api/apps/${appId}/keywords?archived=only${allMode ? "" : `&country=${country}`}`
+      : null,
+  );
+  const archived = useMemo(
+    () => (archivedList ?? []).filter((k) => k.archivedAt),
+    [archivedList],
+  );
+  const [showArchived, setShowArchived] = useState(false);
 
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -151,8 +166,9 @@ export default function KeywordsView() {
   const { refreshing, progress, enqueue, busy } = useRefreshQueue(onBatch);
   const reloadKeywords = useCallback(() => {
     void mutate();
+    void mutateArchived();
     void revalidate("/api/apps");
-  }, [mutate]);
+  }, [mutate, mutateArchived]);
   const detect = useKeywordDetect(
     app?.id,
     allMode ? homeCountry : country,
@@ -358,9 +374,9 @@ export default function KeywordsView() {
     void scoreRelevance(true);
   }, [allMode, busy, scoringRelevance, hasUnscored, country, scoreRelevance]);
 
-  function removeAll(ids: number[], name: string) {
+  function archiveAll(ids: number[], name: string) {
     setDeleteNote(
-      `This removes every keyword tracked in ${name}, including liked ones and ones with notes.`,
+      `This archives every keyword tracked in ${name}, including liked ones and ones with notes.`,
     );
     setPendingDelete(ids);
   }
@@ -383,6 +399,7 @@ export default function KeywordsView() {
     setSelected(new Set([...selected].filter((id) => !gone.has(id))));
     if (panel && gone.has(panel.id)) setPanel(null);
     await actions.remove(ids);
+    void mutateArchived();
   }
 
   function clearFilters() {
@@ -487,11 +504,10 @@ export default function KeywordsView() {
               onClick={() => setCleanup({ country: allMode ? null : country })}
               disabled={!all.length}
               aria-label="Clean up"
-              title="Preview and remove noise: keywords that are not in your metadata, not ranked, and unrelated, another brand or in the wrong script"
+              title="Preview and archive unused keywords: not in your metadata and unranked for 14 days or more. Their rank history is kept."
             >
               <Sparkles aria-hidden className="size-3.5" />
               <span className="hidden md:inline">Clean up</span>
-              {summary.noise > 0 && <CountBadge>{summary.noise}</CountBadge>}
             </Button>
             <Button
               variant="primary"
@@ -535,11 +551,10 @@ export default function KeywordsView() {
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onSelect={() => removeAll(summary.ids, countryName)}
+                      onSelect={() => archiveAll(summary.ids, countryName)}
                       disabled={!all.length}
-                      className="text-danger"
                     >
-                      <Trash2 aria-hidden className="size-3.5" /> Remove all
+                      <Archive aria-hidden className="size-3.5" /> Archive all
                       keywords in {countryName}…
                     </DropdownMenuItem>
                   </>
@@ -576,8 +591,11 @@ export default function KeywordsView() {
         />
       )}
 
-      {app && keywords && all.length > 0 && (
+      {app && keywords && (all.length > 0 || archived.length > 0) && (
         <KeywordSummary
+          archived={archived.length}
+          showArchived={showArchived}
+          onShowArchived={setShowArchived}
           summary={summary}
           scope={
             allMode
@@ -588,10 +606,21 @@ export default function KeywordsView() {
           onFilters={(f) => {
             setFilters(f);
             setLayout("keywords");
+            setShowArchived(false);
           }}
         />
       )}
 
+      {showArchived && app ? (
+        <ArchivedView
+          appId={appId}
+          rows={archived}
+          showCountry={allMode}
+          onChanged={reloadKeywords}
+          onBack={() => setShowArchived(false)}
+        />
+      ) : (
+        <>
       <KeywordToolbar
         query={query}
         onQuery={setQuery}
@@ -710,9 +739,9 @@ export default function KeywordsView() {
             onOpen={setCountry}
             onUpdate={(ids) => void enqueue(ids)}
             onCleanUp={(c) => setCleanup({ country: c })}
-            onRemoveAll={(ids) => {
+            onArchiveAll={(ids) => {
               const code = byId.get(ids[0])?.country ?? "";
-              removeAll(
+              archiveAll(
                 ids,
                 COUNTRY_BY_CODE.get(code)?.name ?? code.toUpperCase(),
               );
@@ -765,6 +794,8 @@ export default function KeywordsView() {
           />
         )}
       </div>
+        </>
+      )}
 
       {app && (
         <>
@@ -800,7 +831,7 @@ export default function KeywordsView() {
             country={cleanup?.country ?? null}
             open={cleanup != null}
             onOpenChange={(open) => !open && setCleanup(null)}
-            onRemoved={onCleaned}
+            onArchived={onCleaned}
           />
           <TopAppsSheet
             app={app}

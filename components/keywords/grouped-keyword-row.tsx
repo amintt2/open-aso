@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, type KeyboardEvent, type MouseEvent } from "react";
-import { ChevronRight, Copy, Heart, HeartOff, Loader2, MoreHorizontal, RefreshCw, StickyNote, Trash2 } from "lucide-react";
+import { Archive, ChevronRight, Copy, Heart, HeartOff, Loader2, MoreHorizontal, RefreshCw, StickyNote } from "lucide-react";
 import Button from "@/components/_ui/button";
 import { Checkbox } from "@/components/_ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/_ui/dropdown-menu";
@@ -207,8 +207,8 @@ function GroupRowBase({ group: g, expanded, selectedCount, refreshingCount, hand
               {g.rows.every((k) => k.liked) ? "Unlike everywhere" : "Like everywhere"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => handlers.onDelete(g.ids)} className="text-danger">
-              <Trash2 aria-hidden className="size-3.5" /> Delete in {g.ids.length === 1 ? "1 country" : `${g.ids.length} countries`}
+            <DropdownMenuItem onSelect={() => handlers.onDelete(g.ids)}>
+              <Archive aria-hidden className="size-3.5" /> Archive in {g.ids.length === 1 ? "1 country" : `${g.ids.length} countries`}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

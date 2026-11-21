@@ -3,12 +3,12 @@
 import type { ComponentType, ReactElement, ReactNode } from "react";
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 import {
+  Archive,
   Copy,
   Heart,
   HeartOff,
   PanelRightOpen,
   RefreshCw,
-  Trash2,
   Trophy,
 } from "lucide-react";
 import {
@@ -89,8 +89,8 @@ function MenuItems({
         {k.liked ? "Unlike" : "Like"}
       </Item>
       <Separator />
-      <Item onSelect={() => handlers.onDelete([k.id])} className="text-danger">
-        <Trash2 aria-hidden className="size-3.5" /> Delete
+      <Item onSelect={() => handlers.onDelete([k.id])}>
+        <Archive aria-hidden className="size-3.5" /> Archive
       </Item>
     </>
   );

@@ -66,7 +66,7 @@ export function inMetadata(k: TrackedKeyword) {
 }
 
 export function isNoise(k: TrackedKeyword) {
-  return !k.liked && !k.notes && k.coverage != null && !inMetadata(k) && k.position == null && isUnrelated(k);
+  return !k.liked && !k.notes && k.coverage != null && !inMetadata(k) && k.position == null;
 }
 
 export const DEFAULT_FILTERS: Filters = {

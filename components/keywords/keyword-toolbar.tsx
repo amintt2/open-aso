@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import {
+  Archive,
   Copy,
   Download,
   Heart,
@@ -9,7 +10,6 @@ import {
   Loader2,
   RefreshCw,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import Button from "@/components/_ui/button";
@@ -201,11 +201,12 @@ function BulkBar({
       <Button
         variant="secondary"
         size="sm"
-        className="text-danger h-[30px]"
+        className="h-[30px]"
         onClick={onDelete}
+        title="Hide these keywords everywhere and keep their rank history. Restore them from Archived."
       >
-        <Trash2 aria-hidden className="size-3.5" />
-        Delete
+        <Archive aria-hidden className="size-3.5" />
+        Archive
       </Button>
     </div>
   );

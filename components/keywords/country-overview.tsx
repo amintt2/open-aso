@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Archive, MoreHorizontal, RefreshCw, Sparkles } from "lucide-react";
 import Button from "@/components/_ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/_ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/_ui/table";
@@ -15,7 +15,7 @@ const COLUMNS: { label: string; title: string }[] = [
   { label: "Ranked", title: "Keywords where your app is in the top 200 results" },
   { label: "Top 10", title: "Keywords where your app is in positions 1 to 10" },
   { label: "In metadata", title: "Keywords fully present in the title, subtitle, keyword field or category indexed for this storefront" },
-  { label: "Noise", title: "Not in metadata, not ranked and unrelated, a competitor brand or in the wrong script. Safe to remove." },
+  { label: "Unused", title: "Not in your metadata and not ranked today. Clean up archives the ones unranked for 14 days or more." },
   { label: "Outdated", title: "Keywords whose data is older than 20 hours" },
 ];
 
@@ -24,7 +24,7 @@ type Props = {
   onOpen: (country: string) => void;
   onUpdate: (ids: number[]) => void;
   onCleanUp: (country: string) => void;
-  onRemoveAll: (ids: number[]) => void;
+  onArchiveAll: (ids: number[]) => void;
 };
 
 function Share({ value, total, tone }: { value: number; total: number; tone?: string }) {
@@ -38,7 +38,7 @@ function Share({ value, total, tone }: { value: number; total: number; tone?: st
   );
 }
 
-export default function CountryOverview({ rows, onOpen, onUpdate, onCleanUp, onRemoveAll }: Props) {
+export default function CountryOverview({ rows, onOpen, onUpdate, onCleanUp, onArchiveAll }: Props) {
   return (
     <Table className="min-w-[860px] text-[13px]">
       <TableHeader>
@@ -92,11 +92,11 @@ export default function CountryOverview({ rows, onOpen, onUpdate, onCleanUp, onR
                       <RefreshCw aria-hidden className="size-3.5" /> Update data
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onCleanUp(r.country)} disabled={!r.noise}>
-                      <Sparkles aria-hidden className="size-3.5" /> Clean up {r.noise ? `${r.noise} noise` : "noise"}…
+                      <Sparkles aria-hidden className="size-3.5" /> Clean up unused keywords…
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => onRemoveAll(r.ids)} className="text-danger">
-                      <Trash2 aria-hidden className="size-3.5" /> Remove all {r.total} keywords…
+                    <DropdownMenuItem onSelect={() => onArchiveAll(r.ids)} >
+                      <Archive aria-hidden className="size-3.5" /> Archive all {r.total} keywords…
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

@@ -50,8 +50,8 @@ export function useKeywordActions(
       try {
         await mutate(
           async (current) => {
-            await api(`/api/apps/${appId}/keywords`, {
-              method: "DELETE",
+            await api(`/api/apps/${appId}/keywords/archive`, {
+              method: "POST",
               body: { ids },
             });
             return current?.filter((k) => !set.has(k.id));
@@ -66,12 +66,24 @@ export function useKeywordActions(
         void revalidate("/api/apps");
         toast.success(
           ids.length === 1
-            ? "Keyword deleted"
-            : `${ids.length} keywords deleted`,
+            ? "Keyword archived"
+            : `${ids.length} keywords archived`,
+          {
+            action: {
+              label: "Undo",
+              onClick: () =>
+                void api(`/api/apps/${appId}/keywords/restore`, {
+                  method: "POST",
+                  body: { ids },
+                })
+                  .then(() => revalidate("/api/apps"))
+                  .catch(() => toast.error("Could not restore keywords")),
+            },
+          },
         );
       } catch (e) {
         toast.error(
-          e instanceof Error ? e.message : "Could not delete keywords",
+          e instanceof Error ? e.message : "Could not archive keywords",
         );
       }
     },

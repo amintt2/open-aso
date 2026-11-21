@@ -178,7 +178,7 @@ export default function KeywordFilters({
           />
           <ToggleRow
             id="kw-filter-noise"
-            label="Noise only (safe to remove)"
+            label="Unused only (not in metadata, unranked)"
             checked={value.noiseOnly ?? false}
             onChange={(noiseOnly) => onChange({ ...value, noiseOnly })}
           />

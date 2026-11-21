@@ -33,13 +33,15 @@ export default function DeleteKeywordsDialog({
           <div className="flex flex-col gap-2 pr-8">
             <DialogTitle className="h2-style">
               {single
-                ? "Delete keyword?"
-                : `Delete ${keywords.length} keywords?`}
+                ? "Archive keyword?"
+                : `Archive ${keywords.length} keywords?`}
             </DialogTitle>
             <DialogDescription className="text-subtle p-style">
-              {single ? `“${keywords[0].term}”` : "These keywords"} and{" "}
-              {single ? "its" : "their"} ranking history will be removed from
-              this app.{note ? ` ${note}` : ""}
+              {single ? `“${keywords[0].term}”` : "These keywords"} will be
+              hidden from every page and no longer re-checked.{" "}
+              {single ? "Its" : "Their"} rank history is kept and you can
+              restore {single ? "it" : "them"} from Archived.
+              {note ? ` ${note}` : ""}
             </DialogDescription>
           </div>
           <div className="flex justify-end gap-2">
@@ -49,11 +51,10 @@ export default function DeleteKeywordsDialog({
             <Button
               variant="primary"
               size="md"
-              className="bg-danger hover:bg-danger/90 text-background"
               onClick={onConfirm}
               autoFocus
             >
-              Delete
+              Archive
             </Button>
           </div>
         </div>

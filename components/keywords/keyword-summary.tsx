@@ -32,8 +32,21 @@ export function applyQuick(f: Filters, quick: QuickFilter): Filters {
 
 type Chip = { key: QuickFilter; label: string; value: number; title: string; tone?: string };
 
-export default function KeywordSummary({ summary, scope, filters, onFilters }: { summary: CountrySummary; scope: string; filters: Filters; onFilters: (f: Filters) => void }) {
-  const active = quickOf(filters);
+type Props = {
+  summary: CountrySummary;
+  scope: string;
+  filters: Filters;
+  onFilters: (f: Filters) => void;
+  archived: number;
+  showArchived: boolean;
+  onShowArchived: (show: boolean) => void;
+};
+
+const CHIP =
+  "focus-visible:ring-ring/60 flex min-w-[104px] shrink-0 cursor-pointer flex-col items-start gap-1.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors duration-150 outline-none hover:bg-white/4 focus-visible:ring-2";
+
+export default function KeywordSummary({ summary, scope, filters, onFilters, archived, showArchived, onShowArchived }: Props) {
+  const active = showArchived ? null : quickOf(filters);
   const chips: Chip[] = [
     { key: "all", label: "Tracked", value: summary.total, title: `Every keyword you track in ${scope}` },
     { key: "ranked", label: "Ranked", value: summary.ranked, title: "Your app appears in the top 200 search results for these keywords" },
@@ -42,9 +55,9 @@ export default function KeywordSummary({ summary, scope, filters, onFilters }: {
     { key: "notInMetadata", label: "Not in metadata", value: summary.total - summary.inMetadata, title: "At least one word is missing from your indexed metadata, so Apple has little reason to rank you" },
     {
       key: "noise",
-      label: "Noise",
+      label: "Unused",
       value: summary.noise,
-      title: "Not in your metadata, not ranked, and unrelated, a competitor brand or in the wrong script. Safe to remove with Clean up. Liked or noted keywords are never counted.",
+      title: "Not in your metadata and not ranked today. Clean up archives the ones unranked for 14 days or more. Liked or noted keywords are never counted.",
       tone: summary.noise > 0 ? "text-warning" : undefined,
     },
   ];
@@ -56,16 +69,24 @@ export default function KeywordSummary({ summary, scope, filters, onFilters }: {
           type="button"
           title={c.title}
           aria-pressed={active === c.key}
-          onClick={() => onFilters(applyQuick(filters, active === c.key ? "all" : c.key))}
-          className={cn(
-            "focus-visible:ring-ring/60 flex min-w-[104px] shrink-0 cursor-pointer flex-col items-start gap-1.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors duration-150 outline-none hover:bg-white/4 focus-visible:ring-2",
-            active === c.key && "border-line-strong bg-secondary",
-          )}
+          onClick={() => onFilters(applyQuick(filters, active === c.key && c.key !== "all" ? "all" : c.key))}
+          className={cn(CHIP, active === c.key && "border-line-strong bg-secondary")}
         >
           <span className="caption-style text-subtle">{c.label}</span>
           <span className={cn("text-[15px] leading-none font-medium tabular-nums", c.tone)}>{c.value.toLocaleString("en-US")}</span>
         </button>
       ))}
+      <span aria-hidden className="bg-border mx-1 w-px shrink-0" />
+      <button
+        type="button"
+        title="Keywords hidden from every page but kept with their rank history. Open to restore or permanently delete them."
+        aria-pressed={showArchived}
+        onClick={() => onShowArchived(!showArchived)}
+        className={cn(CHIP, showArchived && "border-line-strong bg-secondary")}
+      >
+        <span className="caption-style text-subtle">Archived</span>
+        <span className="text-soft text-[15px] leading-none font-medium tabular-nums">{archived.toLocaleString("en-US")}</span>
+      </button>
     </div>
   );
 }

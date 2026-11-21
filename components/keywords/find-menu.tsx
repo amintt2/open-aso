@@ -69,7 +69,7 @@ export default function FindMenu({ country, trackedCount, running, disabled, onD
             <div className="flex flex-col gap-2 pr-8">
               <DialogTitle className="h2-style">Find keywords in all {COUNTRIES.length} countries?</DialogTitle>
               <DialogDescription className="text-subtle p-style">
-                Every storefront is scanned one after another. App Store requests are rate-limited, so this often takes 20 minutes or more. You can keep working: progress shows at the top of this page. New keywords count toward your plan&apos;s keyword limit, and you can remove the noise afterwards with Clean up.
+                Every storefront is scanned one after another. App Store requests are rate-limited, so this often takes 20 minutes or more. You can keep working: progress shows at the top of this page. New keywords count toward your plan&apos;s keyword limit, and Clean up archives the ones that never rank.
               </DialogDescription>
             </div>
             <div className="flex justify-end gap-2">
